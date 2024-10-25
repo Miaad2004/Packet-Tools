@@ -13,8 +13,14 @@ class NetworkMapper:
     def send_arp():
         pass
     
-    def send_icmp():
-        pass
+    def send_icmp(host,  icmp_type=0, icmp_code=0, identifier=1, sequence=1, payload=b''):
+        ip_layer = IP(dst=host)
+        icmp_packet = ICMP(type=icmp_type, code=icmp_code, id=identifier, seq=sequence) / payload
+        packet = ip_layer / icmp_packet
+        response = sr1(packet, timeout=2, verbose=False)
+        return response
+
+        
     
     def is_online(self, host):
         # check for ports from 1 to 1024
