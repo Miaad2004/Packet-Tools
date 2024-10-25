@@ -3,14 +3,30 @@ import time
 import argparse
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from scapy.all import ICMP, IP, sr1
 
 class NetworkMapper:
     def __init__(self):
         pass 
         self.conn_timeout = 0
     
-    def is_online(self, host):
+    def send_arp():
         pass
+    
+    def send_icmp():
+        pass
+    
+    def is_online(self, host):
+        # check for ports from 1 to 1024
+        TCP_result = self.scan_port_range(host, start_port=0, end_port=1024, mode="TCP")
+        UDP_result = self.scan_port_range(host, start_port=0, end_port=1024, mode="UDP")
+        
+        # check ICMP
+        packet = IP(dst=host)/ICMP()
+        response = sr1(packet, timeout=self.conn_timeout, verbose=False)
+        
+        return any(TCP_result + UDP_result + [response])
+
     
     def scan_port(self, host, port, mode="TCP"):
         assert mode in ["TCP", "UDP"]
@@ -57,5 +73,6 @@ class NetworkMapper:
     def send_http_delete():
         pass
     
-    
+
+ 
  
