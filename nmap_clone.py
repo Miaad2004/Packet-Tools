@@ -7,11 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 class NetworkMapper:
     def __init__(self):
         pass 
-        self.conn_timeout = 
+        self.conn_timeout = 0
     
-    @staticmethod
-    def is_online(host):
-        # Should check icmp + ports 1 to 1024
+    def is_online(self, host):
         pass
     
     def scan_port(self, host, port, mode="TCP"):
@@ -25,15 +23,21 @@ class NetworkMapper:
             is_open = s.connect_ex((host, port)) == 0
             latency = time.time() - start_time if is_open else None
         
-        return [is_open, latency]
+        return{"port_number": port, "port_status": is_open, "latency": latency}
     
-    def calc_average_latency(self, host, port, n=100, mode="TCP"):        
-        # scans a single port if open returns the latencies
+    def calc_average_latency(self, host, port, n=100, mode="TCP"): 
         pass
     
-    def scan_port_range():
-        # scans a range of ports using mutithreading (and calculates latencies)
-        pass
+    def scan_port_range(self, host, start_port=0, end_port=1024, mode="TCP"):
+        assert mode in ["TCP", "UDP"] 
+        assert start_port >= 0 and start_port <= 2**16
+        assert end_port >= 0 and end_port <= 2**16
+        
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(self.scan_port, host, port, mode) for port in range(start_port, end_port + 1)]
+            result = [future.result()["port_status"] for future in futures]
+            
+        return result
     
     def send_http_get():
         pass
