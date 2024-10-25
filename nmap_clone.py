@@ -26,7 +26,16 @@ class NetworkMapper:
         return{"port_number": port, "port_status": is_open, "latency": latency}
     
     def calc_average_latency(self, host, port, n=100, mode="TCP"): 
-        pass
+        assert mode in ["TCP", "UDP"]       
+        assert port >= 0 and port <= 2**16
+        
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(self.scan_port, host, port, mode) for i in range(n)]
+            delays = [future.result()["latency"] for future in futures]
+            filter(delays, lambda x: x is not None)
+            
+        average_delay = sum(delays) / len(delays)
+        return average_delay
     
     def scan_port_range(self, host, start_port=0, end_port=1024, mode="TCP"):
         assert mode in ["TCP", "UDP"] 
