@@ -58,6 +58,35 @@ class ICMP:
         checksum = ~checksum & 0xFFFF
         return checksum
     @staticmethod
+    def listen_for_reply(my_socket, timeout=1, verbose=True):
+        my_socket.settimeout(timeout)
+        try:
+            while True:
+                packet, addr = my_socket.recvfrom(ICMP.incoming_buffer_size)
+                recv_time = time.perf_counter()
+
+                # Extract IP header and ICMP header
+                ip_header = packet[0:20]
+                icmp_header = packet[20:28]
+
+                # Unpack ICMP header
+                icmp_type, code, checksum, packet_id, sequence = struct.unpack("!bbHHh", icmp_header)
+
+                # Return the relevant details
+                return {
+                    "icmp_type": ICMPType(value=icmp_type),
+                    "recv_time": recv_time,
+                    "sequence": sequence,
+                    "destination_ip": addr[0], 
+                    "ip_header": ip_header,
+                    "icmp_header": icmp_header,
+                    "payload": packet[28:]  
+                }
+
+        except socket.timeout as e:
+            if verbose:
+                print(f"Request timed out after {timeout} seconds")
+    @staticmethod
     def _allow_icmp_ttl_exceeded(RULE_NAME = "Allow ICMP Time-Exceeded"):
         if platform.system() == "Windows":
             print("Requesting firewall permission to allow ICMP Time-Exceeded packets.")
