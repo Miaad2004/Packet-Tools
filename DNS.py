@@ -71,3 +71,19 @@ class DNS:
         query = query_name +  struct.pack("!HH", query_type, query_class)
         
         return query
+        
+    
+    def build_packet(self, query: str , query_type: QueryType = QueryType.A.value, query_class: int = 1):
+            flags = (self.QR << 15) + (self.opcode << 11) + (self.AA << 10) + \
+                    (self.TC << 9) + (self.RD << 8) + (self.RA << 7) + (self.Z << 4) + self.RCODE
+            header = struct.pack("!HHHHHH", self.transaction_id, flags, self.n_queries,
+                                 self.n_answers, self.ns_count, self.na_count)
+            
+            q = self._build_query(query, query_type, query_class)
+            
+            return header + q
+        
+        
+        
+
+    
