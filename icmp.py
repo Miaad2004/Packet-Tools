@@ -57,3 +57,38 @@ class ICMP:
         # ones complement & and mask it to 16 bits
         checksum = ~checksum & 0xFFFF
         return checksum
+    @staticmethod
+    def _allow_icmp_ttl_exceeded(RULE_NAME = "Allow ICMP Time-Exceeded"):
+        if platform.system() == "Windows":
+            print("Requesting firewall permission to allow ICMP Time-Exceeded packets.")
+            try:
+                # Add firewall rule to allow ICMP Time-Exceeded packets
+                subprocess.run([
+                    "powershell", 
+                    "-Command", 
+                    f"New-NetFirewallRule -DisplayName '{RULE_NAME}' -Direction Inbound -Protocol ICMPv4 -IcmpType 11 -Action Allow"
+                ], check=True)
+                print(f"Firewall rule '{RULE_NAME}' added successfully.")
+                
+                # Register the cleanup function to delete the rule at the end
+                atexit.register(ICMP._delete_icmp_rule)
+
+            except subprocess.CalledProcessError:
+                print("Failed to add firewall rule. Please run this script as Administrator.")
+        else:
+            print("ICMP firewall rule is only applicable on Windows. No action needed for this platform.")
+
+    @staticmethod
+    def _delete_icmp_rule(RULE_NAME = "Allow ICMP Time-Exceeded"):
+        if platform.system() == "Windows":
+            print(f"Deleting firewall rule '{RULE_NAME}'.")
+            try:
+                subprocess.run([
+                    "powershell",
+                    "-Command",
+                    f"Remove-NetFirewallRule -DisplayName '{RULE_NAME}'"
+                ], check=True)
+                print(f"Firewall rule '{RULE_NAME}' deleted successfully.")
+                
+            except subprocess.CalledProcessError:
+                print(f"Failed to delete firewall rule '{RULE_NAME}'. You may need to remove it manually.")
