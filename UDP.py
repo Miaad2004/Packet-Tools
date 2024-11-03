@@ -15,3 +15,8 @@ class UDPPacket:
         # for checksum
         self.source_ip = source_ip
         self.dest_ip = dest_ip
+    
+    @staticmethod
+    def ip_to_bytes(ipv4: str):
+        parts = map(int, ipv4.split("."))
+        return bytes(parts)
