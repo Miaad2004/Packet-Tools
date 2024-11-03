@@ -57,6 +57,52 @@ class ICMP:
         # ones complement & and mask it to 16 bits
         checksum = ~checksum & 0xFFFF
         return checksum
+    
+    @staticmethod
+    def send_packet(source_ipv4, destination_ipv4, icmp_type, sequence_num=1, ttl=64, 
+                    icmp_code=0, process_id=os.getpid(),
+                    my_socket=None, payload="", send_time=False):
+        socket_created = False
+        if my_socket is None:
+            my_socket = ICMP._create_socket()
+            socket_created = True
+
+        if type(payload) != bytes:
+            payload = bytes(payload, encoding='utf-8')
+            
+        if send_time:
+            payload = struct.pack("d", time.perf_counter()) + payload
+            
+        try:
+            # set ttl
+            my_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
+            
+            checksum_val = 0
+            process_id = process_id & 0xFFFF  # Limit process id to 16 bits
+            
+            # dummy header for calculating checksum
+            icmp_header = struct.pack("!bbHHh", icmp_type.value, icmp_code, checksum_val, process_id, sequence_num)        
+            icmp_packet = icmp_header + payload
+
+            # add checksum
+            checksum_val = ICMP._calculate_checksum(icmp_packet)            
+            icmp_header = struct.pack("!bbHHh", icmp_type.value, icmp_code, checksum_val, process_id, sequence_num) 
+            icmp_packet = icmp_header + payload  
+            
+            # Create IP header
+            ip_header = IP.IPHeader(source_ipv4, destination_ipv4, protocol=IP.IPProtocol.ICMP, ttl=ttl)
+            ip_header = ip_header.build_packet(payload_length_bytes=len(icmp_packet))  
+            packet = ip_header + icmp_packet
+            
+            my_socket.sendto(packet, (destination_ipv4, 1254))
+        
+        finally:
+            if socket_created:
+                my_socket.close()
+        
+        return 0
+
+
     @staticmethod
     def listen_for_reply(my_socket, timeout=1, verbose=True):
         my_socket.settimeout(timeout)
