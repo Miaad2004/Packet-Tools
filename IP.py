@@ -53,3 +53,9 @@ class IPHeader:
         # one's complement and mask to 16 bits
         checksum = ~checksum & 0xFFFF
         return checksum
+    
+    @staticmethod
+    def ip_to_bytes(ipv4: str):
+        parts = map(int, ipv4.split("."))
+        return bytes(parts)
+    
