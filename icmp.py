@@ -19,3 +19,17 @@ class ICMPType(Enum):
     TIME_EXCEEDED = 11  # Time to live (TTL) expired in transit
     PARAMETER_PROBLEM = 12  # Parameter Problem: Bad IP header
     TIMESTAMP = 13  # Timestamp
+
+class ICMP:
+    incoming_buffer_size = 1024
+    
+    def __init__(self):
+        pass
+    
+    @staticmethod
+    def _create_socket(custom_IP_header=True):
+         my_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+         if custom_IP_header:
+             my_socket.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+         
+         return my_socket
