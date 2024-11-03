@@ -59,3 +59,40 @@ class IPHeader:
         parts = map(int, ipv4.split("."))
         return bytes(parts)
     
+    def build_packet(self, payload_length_bytes:int):
+        ihl_words = self.internet_header_length // 4 
+        self.total_length = self.internet_header_length + payload_length_bytes
+        source_ip = IPHeader.ip_to_bytes(self.source_ip)
+        dest_ip = IPHeader.ip_to_bytes(self.destination_ip)
+        
+        flags = (self.flag_reserved << 2) + (self.flag_dont_fragment << 1) + self.flag_more_fragments    # 3 bits
+        
+        ip_header = struct.pack("!BBHHHBBH4s4s",
+                                (self.version << 4) + ihl_words,
+                                (self.DSCP << 2) + self.ECN,
+                                self.total_length,
+                                self.identification ,
+                                (flags << 13) + self.fragment_offset,
+                                self.ttl,
+                                self.protocol,
+                                self.header_checksum,
+                                source_ip,
+                                dest_ip,
+                                )
+        
+        self.header_checksum = self.calculate_checksum(ip_header)
+        ip_header = struct.pack("!BBHHHBBH4s4s",
+                                (self.version << 4) + ihl_words,
+                                (self.DSCP << 2) + self.ECN,
+                                self.total_length,
+                                self.identification ,
+                                (flags << 13) + self.fragment_offset,
+                                self.ttl,
+                                self.protocol,
+                                self.header_checksum,
+                                source_ip,
+                                dest_ip,
+                                )
+        
+        return ip_header
+        
