@@ -132,6 +132,51 @@ class ICMP:
         except socket.timeout as e:
             if verbose:
                 print(f"Request timed out after {timeout} seconds")
+    
+
+    @staticmethod
+    def ping(source_ipv4, destination_ipv4, count=10, timeout=1, delay=1, payload_size_bytes=32):
+        print(f"Pinging {destination_ipv4} with {count} packets:")
+        min_rtt = float('inf')
+        max_rtt = 0
+        total_rtt = 0
+        packets_sent = 0
+        packets_received = 0
+        
+        # offset size of time sent as payload
+        real_payload_size = max(0, payload_size_bytes - struct.calcsize('d'))
+        
+        with ICMP._create_socket() as s:
+            for i in range(1, count + 1):
+                payload = os.urandom(real_payload_size)
+                ICMP.send_packet(source_ipv4, destination_ipv4, ICMPType.ECHO_REQUEST, sequence_num=i, my_socket=s, send_time=True, payload=payload)
+                packets_sent += 1
+                reply = ICMP.listen_for_reply(my_socket=s, timeout=timeout, verbose=False)
+                
+                if reply and reply['icmp_type'] == ICMPType.ECHO_REPLY:
+                    send_time = struct.unpack("d", reply["payload"][0: struct.calcsize('d')])[0]
+                    rtt = (reply["recv_time"] - send_time) * 1000  # RTT in milliseconds
+                    total_rtt += rtt
+                    min_rtt = min(min_rtt, rtt)
+                    max_rtt = max(max_rtt, rtt)
+                    packets_received += 1
+                    print(f"Reply from {reply['destination_ip']}: seq={reply['sequence']} bytes={payload_size_bytes} time={rtt:.2f} ms")
+                    
+                else:
+                    print(f"Request timed out for seq={i} after {timeout} seconds")
+            
+                time.sleep(delay)
+        
+        if packets_sent > 0:
+            packet_loss = (packets_sent - packets_received) / packets_sent * 100
+            
+        else:
+            packet_loss = 100.0  # If no packets sent, loss is 100%
+
+        print(f"\nPing statistics for {destination_ipv4}:")
+        print(f"\tPackets: Sent = {packets_sent}, Received = {packets_received}, {packet_loss:.2f}% packet loss,")
+        print(f"\tMinimum = {min_rtt:.2f}ms, Maximum = {max_rtt:.2f}ms, Average = {total_rtt / packets_received:.2f}ms")  
+    
     @staticmethod
     def _allow_icmp_ttl_exceeded(RULE_NAME = "Allow ICMP Time-Exceeded"):
         if platform.system() == "Windows":
