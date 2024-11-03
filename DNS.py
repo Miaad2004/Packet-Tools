@@ -52,3 +52,22 @@ class DNS:
         parts = domain.split(".")
         parts = [struct.pack("!B", len(part)) + bytes(part, encoding='utf-8') for part in parts]
         return b"".join(parts) + b'\x00'
+    
+    def _build_query(self, query: str , query_type: QueryType = QueryType.A.value, query_class: int = 1):
+        """ 
+        DNS Query structure
+        -------------------
+        |       QNAME     |
+        -------------------
+        |       QTYPE     |
+        -------------------
+        |       QCLASS    |
+        -------------------
+        """
+        if isinstance(query_type, QueryType):
+            query_type = query_type.value
+            
+        query_name = self.domain_to_label(query)
+        query = query_name +  struct.pack("!HH", query_type, query_class)
+        
+        return query
