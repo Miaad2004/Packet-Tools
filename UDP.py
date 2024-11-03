@@ -50,3 +50,21 @@ class UDPPacket:
         # one's complement and mask to 16 bits
         checksum = ~checksum & 0xFFFF
         return checksum
+    
+    def build_packet(self, payload: bytes):
+        assert len(payload) <= 2**16 - 1 - 8 - 20  # 8 byte UDP header and 20 bytes ip header
+        
+        self.total_length = 8 + len(payload)
+        
+        packet = struct.pack("!HHHH",
+                             self.source_port, self.dest_port,
+                             self.total_length, self.checksum)
+        packet += payload
+        
+        self.checksum = self.calculate_checksum(self.get_pseudo_header(udp_length=len(packet)) + packet)
+        packet = struct.pack("!HHHH",
+                            self.source_port, self.dest_port,
+                            self.total_length, self.checksum)
+        packet += payload
+        
+        return packet
