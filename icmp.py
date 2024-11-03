@@ -33,3 +33,27 @@ class ICMP:
              my_socket.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
          
          return my_socket
+         
+
+    @staticmethod
+    def _calculate_checksum(packet):
+        # add padding for odd length
+        if len(packet) % 2 == 1:
+            packet += b'\x00'   # add a zero byte
+        
+        checksum = 0
+        
+        for i in range(0, len(packet), 2):
+            # add up 2 bytes by 2 bytes
+            checksum += (packet[i] << 8) + packet[i + 1]
+            carry = checksum >> 16
+            
+            # mask with 0xFFFF to limit sum to 16 bits
+            check_sum_16_bit = checksum & 0xFFFF   
+            
+            # Wrap around carry 
+            checksum = check_sum_16_bit + carry
+        
+        # ones complement & and mask it to 16 bits
+        checksum = ~checksum & 0xFFFF
+        return checksum
