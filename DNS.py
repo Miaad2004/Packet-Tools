@@ -46,3 +46,9 @@ class DNS:
         self.ns_count = 0  # Number of name servers in Authority Section  | 16 bits
         self.na_count = 0  # Number of additional records (usually A record of name servers) | 16 bits
     
+    @staticmethod
+    def domain_to_label(domain: str) -> bytes:
+        domain = domain.strip()
+        parts = domain.split(".")
+        parts = [struct.pack("!B", len(part)) + bytes(part, encoding='utf-8') for part in parts]
+        return b"".join(parts) + b'\x00'
