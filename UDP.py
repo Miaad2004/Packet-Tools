@@ -20,6 +20,19 @@ class UDPPacket:
     def ip_to_bytes(ipv4: str):
         parts = map(int, ipv4.split("."))
         return bytes(parts)
+    
+    def get_pseudo_header(self, udp_length):
+        source_ip = self.ip_to_bytes(self.source_ip)
+        dest_ip = self.ip_to_bytes(self.dest_ip)
+        
+        pseudo_header = struct.pack("!4s4sHH",
+                                    source_ip, dest_ip, udp_length,
+                                    (0 << 8)+ IPProtocol.UDP.value)
+        
+        return pseudo_header
+        
+        
+    
     def calculate_checksum(self, packet_header):
         # pad even packets
         if len(packet_header) % 2 == 1:
