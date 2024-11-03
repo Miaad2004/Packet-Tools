@@ -178,6 +178,43 @@ class ICMP:
         print(f"\tMinimum = {min_rtt:.2f}ms, Maximum = {max_rtt:.2f}ms, Average = {total_rtt / packets_received:.2f}ms")  
     
     @staticmethod
+    def traceroute(source_ipv4, destination_ipv4, max_hops=20, timeout=2):
+        ICMP._allow_icmp_ttl_exceeded()
+        print(f"Tracerouting {destination_ipv4} with a maximum of {max_hops} hops:")
+        
+        with ICMP._create_socket() as s:
+            sequence_number = 1
+            for ttl in range(1, max_hops + 1):
+                delays = []
+                for i in range(3):  # Send three packets per hop
+                    ICMP.send_packet(source_ipv4, destination_ipv4, ICMPType.ECHO_REQUEST, my_socket=s, sequence_num=sequence_number, ttl=ttl, send_time=True)
+                    sequence_number +=1
+                    reply = ICMP.listen_for_reply(my_socket=s, timeout=timeout, verbose=False)
+                    
+                    if reply:
+                        if reply["icmp_type"] == ICMPType.ECHO_REPLY:
+                            send_time = struct.unpack('d', reply['payload'][0: struct.calcsize('d')])[0]
+                            delays.append(f"{(reply['recv_time'] - send_time) * 1000:.2f} ms")
+                            destination_reached = True
+                            
+                        elif reply["icmp_type"] == ICMPType.TIME_EXCEEDED:
+                            send_time = struct.unpack('d', reply['payload'][0: struct.calcsize('d')])[0]
+                            delays.append(f"{(reply['recv_time'] - send_time) * 1000:.2f} ms")
+                            
+                        else:
+                            delays.append("*")
+                    else:
+                        delays.append("*")
+                
+                # Print delays for this hop
+                print(f"{ttl}\t{reply['destination_ip'] if reply else '*'}\t" + "\t".join(delays))
+                
+                # Stop if the destination reached
+                if reply and reply["icmp_type"] == ICMPType.ECHO_REPLY:
+                    print("Reached destination")
+                    break
+    
+    @staticmethod
     def _allow_icmp_ttl_exceeded(RULE_NAME = "Allow ICMP Time-Exceeded"):
         if platform.system() == "Windows":
             print("Requesting firewall permission to allow ICMP Time-Exceeded packets.")
@@ -212,3 +249,5 @@ class ICMP:
                 
             except subprocess.CalledProcessError:
                 print(f"Failed to delete firewall rule '{RULE_NAME}'. You may need to remove it manually.")
+
+ICMP.ping("192.168.1.6","8.8.8.8")
