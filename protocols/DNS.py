@@ -1,7 +1,7 @@
 import socket
 import struct
-import IP
-import UDP
+import protocols.IP as IP
+import protocols.UDP as UDP
 import random
 import enum
 
@@ -87,3 +87,40 @@ class DNS:
         
 
     
+def test(query, source_ip, dest_ip, source_port=12345, dest_port=53, query_type=QueryType.A):
+    dns_client = DNS()
+    dns_query = dns_client.build_packet(query, query_type)
+    
+    udp_packet = UDP.UDPPacket(source_ip, dest_ip, source_port, dest_port)
+    udp_payload = dns_query
+    udp_header = udp_packet.build_packet(udp_payload)
+    
+    ip_packet = IP.IPHeader(source_ip, dest_ip, IP.IPProtocol.UDP)
+    ip_header = ip_packet.build_packet(payload_length_bytes=len(udp_header))
+    
+    packet = ip_header + udp_header
+    
+    with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP) as s:
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+        s.sendto(packet, (dest_ip, 0))
+    
+        print(f"Sent DNS query for {query} ({query_type.name}) to {dest_ip}")
+
+        # Step 5: Receive the response
+        try:
+            response = s.recv(65535)  # Large buffer size to capture full response
+            print("Received response from DNS server.")
+            print("Response (hex):", response.hex())  # Print raw response in hex
+        except socket.timeout:
+            print("Request timed out.")
+
+
+
+# Test for an IPv6 address record (AAAA)
+test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.AAAA)
+
+# Test for a Mail Exchange (MX) record
+test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.MX)
+
+# Test for a Canonical Name (CNAME) record
+test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.CNAME)

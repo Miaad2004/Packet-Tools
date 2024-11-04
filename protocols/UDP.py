@@ -1,5 +1,5 @@
 import struct
-from IP import IPProtocol
+from protocols.IP import IPProtocol
 
 # Based on https://en.wikipedia.org/wiki/User_Datagram_Protocol
 class UDPPacket:
@@ -68,3 +68,4 @@ class UDPPacket:
         packet += payload
         
         return packet
+
