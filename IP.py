@@ -2,7 +2,7 @@ import socket
 import struct
 import random
 from enum import Enum
-from utils.utils import Utils
+from protocols.utils import Utils
 
 class IPProtocol(Enum):
     # Based on https://en.wikipedia.org/wiki/IPv4#DSCP
@@ -37,16 +37,11 @@ class IPHeader:
         self.source_ip = source_ip   # 32 bits
         self.destination_ip = dest_ip   # 32 bits
     
-    @staticmethod
-    def ip_to_bytes(ipv4: str):
-        parts = map(int, ipv4.split("."))
-        return bytes(parts)
-    
-    def build_header(self):
+    def build_header(self, payload_length_bytes: int) -> bytes:
         ihl_words = self.internet_header_length // 4 
         self.total_length = self.internet_header_length + payload_length_bytes
-        source_ip = IPHeader.ip_to_bytes(self.source_ip)
-        dest_ip = IPHeader.ip_to_bytes(self.destination_ip)
+        source_ip = Utils.ip_to_bytes(self.source_ip)
+        dest_ip = Utils.ip_to_bytes(self.destination_ip)
         
         flags = (self.flag_reserved << 2) + (self.flag_dont_fragment << 1) + self.flag_more_fragments    # 3 bits
         
@@ -84,6 +79,6 @@ class IPPacket:
         self.header = header
         self.payload = payload
 
-    def build_packet(self):
-        ip_header = self.header.build_header()
+    def build_packet(self) -> bytes:
+        ip_header = self.header.build_header(len(self.payload))
         return ip_header + self.payload

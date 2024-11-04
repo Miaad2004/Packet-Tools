@@ -7,7 +7,7 @@ import subprocess
 import platform
 import atexit
 import protocols.IP as IP
-from utils.utils import Utils
+from protocols.utils import Utils
 
 class ICMPType(Enum):
     ECHO_REPLY = 0  # Echo reply (used to ping)

@@ -1,9 +1,8 @@
-import protocols.IP as IP
+from IP import IPHeader, IPProtocol
 import struct
 import socket
-from utils.utils import utils
 import random
-from utils.utils import Utils
+from utils import Utils
 
 class TCPHeader:
     def __init__(self, source_ip: str, dest_ip: str, source_port: int, dest_port: int):
@@ -27,12 +26,13 @@ class TCPHeader:
         self.window = 8192         # 16 bits (default value)
         self.checksum = 0          # 16 bits
         self.urgent_pointer = 0    # 16 bits
+        self.payload = b""         # Initialize payload as empty bytes
         #self.options = 0           # 32 bits
     
     def _get_pseudo_header(self, tcp_packet_length):
         pseudo_header = struct.pack("!4s4sBBH",
                                     utils.ip_to_bytes(self.source_ip), utils.ip_to_bytes(self.dest_ip),
-                                    0, IP.IPProtocol.TCP.value, tcp_packet_length)
+                                    0, IPProtocol.TCP.value, tcp_packet_length)
         return pseudo_header
     
     def build_header(self):
@@ -66,6 +66,7 @@ class TCPPacket:
     def __init__(self, header: TCPHeader, payload: bytes):
         self.header = header
         self.payload = payload
+        self.header.payload = payload  # Set the payload in the header
 
     def build_packet(self):
         tcp_header = self.header.build_header()
@@ -92,7 +93,7 @@ def test():
     packet = tcp_packet.build_packet()
     
     # Build IP packet
-    ip_packet = IP.IPHeader(source_ip, dest_ip, IP.IPProtocol.TCP).build_packet(len(packet))
+    ip_packet = IPHeader(source_ip, dest_ip, IPProtocol.TCP).build_packet(len(packet))
     final_packet = ip_packet + packet
     
     with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW) as s:

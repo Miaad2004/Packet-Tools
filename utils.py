@@ -19,6 +19,6 @@ class Utils:
         return checksum
     
     @staticmethod
-    def ip_to_bytes(ipv4: str):
+    def ip_to_bytes(ipv4: str) -> bytes:
         parts = map(int, ipv4.split("."))
         return bytes(parts)
