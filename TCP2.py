@@ -139,6 +139,33 @@ class TCPConnection:
         self.send_sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
         self.recv_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
     
+    def send_packet(self, tcp_packet: TCPPacket): 
+        tcp_packet.send_or_recv_time = Utils.get_current_time()
+        tcp_packet = tcp_packet.build_packet()
+        
+        # Create IP header
+        ip_header = IPHeader(self.source_ip, self.dest_ip, IPProtocol.TCP)
+        ip_packet = IPPacket(ip_header, tcp_packet).build_packet()
+        
+         
+        # create Ethernet header
+        frame = Ethernet.EthernetFrame(self.source_MAC, self.dest_MAC, ip_packet, Ethernet.EthernetType.IPv4, use_software_crc=False).build_frame()
+        
+        # port is set to 0 because we are sending raw IP packets
+        self.send_sock.sendto(frame, (self.interface, 0))
+        self.retransmission_queue.append(tcp_packet)
+    
+    def _send_syn(self):
+        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
+        tcp_header.SYN = 1
+        tcp_header.sequence_number = self.our_seq_number
+        tcp_packet = TCPPacket(tcp_header)
+        self.send_packet(tcp_packet)
+        self.our_seq_number += 1
+        
+        if self.verbose:
+            print("SYN packet sent")
+    
     def open():
         pass
     
