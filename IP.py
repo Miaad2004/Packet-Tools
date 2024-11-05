@@ -73,6 +73,36 @@ class IPHeader:
                                 )
         
         return ip_header
+    
+    @staticmethod
+    def from_bytes(ip_header_bytes: bytes):
+        version_ihl, dscp_ecn, total_length, identification, flags_fragment_offset, ttl, protocol, header_checksum, source_ip, dest_ip = struct.unpack("!BBHHHBBH4s4s", ip_header_bytes)
+        version = version_ihl >> 4
+        ihl = (version_ihl & 0x0F) * 4
+        dscp = dscp_ecn >> 2
+        ecn = dscp_ecn & 0x03
+        flags = flags_fragment_offset >> 13
+        dont_fragment = (flags_fragment_offset >> 1) & 0x01
+        more_fragments = flags_fragment_offset & 0x01
+        fragment_offset = flags_fragment_offset & 0x1FFF
+        source_ip = Utils.bytes_to_ip(source_ip)
+        dest_ip = Utils.bytes_to_ip(dest_ip)
+        
+        ip_header = IPHeader(source_ip, dest_ip, IPProtocol(protocol))
+        ip_header.version = version
+        ip_header.internet_header_length = ihl
+        ip_header.DSCP = dscp
+        ip_header.ECN = ecn
+        ip_header.total_length = total_length
+        ip_header.identification = identification
+        ip_header.flag_reserved = flags
+        ip_header.flag_dont_fragment = dont_fragment
+        ip_header.flag_more_fragments = more_fragments
+        ip_header.fragment_offset = fragment_offset
+        ip_header.ttl = ttl
+        ip_header.protocol = protocol
+        ip_header.header_checksum = header_checksum
+        return ip_header
 
 class IPPacket:
     def __init__(self, header: IPHeader, payload: bytes):
