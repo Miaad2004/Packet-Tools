@@ -1,3 +1,5 @@
+import time
+
 class Utils:
     @staticmethod
     def calculate_checksum(packet_header):
@@ -22,3 +24,20 @@ class Utils:
     def ip_to_bytes(ipv4: str) -> bytes:
         parts = map(int, ipv4.split("."))
         return bytes(parts)
+    
+    @staticmethod
+    def bytes_to_ip(ipv4_bytes: bytes) -> str:
+        return ".".join(map(str, ipv4_bytes))
+    
+    @staticmethod
+    def mac_to_bytes(mac: str) -> bytes:
+        parts = map(lambda x: int(x, 16), mac.split(":"))
+        return bytes(parts)
+    
+    @staticmethod
+    def bytes_to_mac(mac_bytes: bytes) -> str:
+        return ":".join(map(lambda x: format(x, "02x"), mac_bytes))
+    
+    @staticmethod
+    def get_current_time():
+        return time.perf_counter()
