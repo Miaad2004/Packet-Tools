@@ -166,6 +166,21 @@ class TCPConnection:
         if self.verbose:
             print("SYN packet sent")
     
+    def _send_ack(self):
+        self.server_seq_number += 1
+        
+        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
+        tcp_header.ACK = 1
+        
+        tcp_header.sequence_number = self.our_seq_number
+        tcp_header.ack_number = self.server_seq_number 
+        tcp_packet = TCPPacket(tcp_header)
+
+        self.send_packet(tcp_packet)
+        
+        if self.verbose:
+            print(f"ACK packet sent with seq number: {self.our_seq_number}, ack number: {self.server_seq_number + 1}")
+    
     def open():
         pass
     
