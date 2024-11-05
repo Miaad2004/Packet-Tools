@@ -2,7 +2,7 @@ import socket
 import struct
 import random
 from enum import Enum
-from protocols.utils import Utils
+from utils import Utils
 
 class IPProtocol(Enum):
     # Based on https://en.wikipedia.org/wiki/IPv4#DSCP
