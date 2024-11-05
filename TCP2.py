@@ -208,6 +208,16 @@ class TCPConnection:
         payload = packet[40:]
         
         return ip_header, tcp_header, payload
+    
+    def _send_reset(self):
+        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
+        tcp_header.RST = 1
+        tcp_header.sequence_number = self.our_seq_number
+        
+        tcp_packet = TCPPacket(tcp_header)
+        self.send_packet(tcp_packet)
+        if self.verbose:
+            print(f"RST packet sent with seq number: {self.our_seq_number}")
     def open():
         pass
     
