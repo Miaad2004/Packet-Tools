@@ -1,7 +1,7 @@
 import socket
 import struct
-import protocols.IP as IP
-import protocols.UDP as UDP
+import IP
+import UDP
 import random
 import enum
 
@@ -96,7 +96,7 @@ def test(query, source_ip, dest_ip, source_port=12345, dest_port=53, query_type=
     udp_header = udp_packet.build_packet(udp_payload)
     
     ip_packet = IP.IPHeader(source_ip, dest_ip, IP.IPProtocol.UDP)
-    ip_header = ip_packet.build_packet(payload_length_bytes=len(udp_header))
+    ip_header = ip_packet.build_header(payload_length_bytes=len(udp_header))
     
     packet = ip_header + udp_header
     
@@ -117,7 +117,7 @@ def test(query, source_ip, dest_ip, source_port=12345, dest_port=53, query_type=
 
 
 # Test for an IPv6 address record (AAAA)
-test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.AAAA)
+test("google.com", "172.18.121.202", "8.8.8.8", query_type=QueryType.AAAA)
 
 # Test for a Mail Exchange (MX) record
 test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.MX)
