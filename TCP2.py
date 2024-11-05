@@ -113,11 +113,31 @@ class TCPPacket:
         return tcp_header + self.payload
 
 class TCPConnection:
-    def __init__(self):
-        pass
-    
-    def perform_handshake(self):
-        pass
+    def __init__(self, source_MAC: str, dest_MAC: str, source_ip: str, dest_ip: str, source_port: int, dest_port: int, interface: str):
+        self.source_MAC = source_MAC
+        self.dest_MAC = dest_MAC
+        self.source_ip = source_ip
+        self.dest_ip = dest_ip
+        self.source_port = source_port
+        self.dest_port = dest_port
+        self.interface = interface
+        
+        self.retransmission_queue = collections.deque()
+        self.send_buffer = []
+        self.receive_buffer = []
+        self.current_segment = None
+        self.connection_state = ConnectionState.CLOSED
+        
+        self.our_seq_number = random.randint(0, 2**32 - 1)
+        self.server_seq_number = None
+        self.verbose = 1
+        
+        # In Linux "Receiving of all IP protocols via IPPROTO_RAW is not possible using raw sockets."
+        # source: https://stackoverflow.com/questions/40795772/cant-receive-packets-to-raw-socket
+        # So I used one raw socket (IPPROTO_RAW) for sending (with custom IP header)
+        # and another raw socket (IPPROTO_TCP) for receiving TCP packets
+        self.send_sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
+        self.recv_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
     
     def open():
         pass
