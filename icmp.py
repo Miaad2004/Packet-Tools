@@ -6,8 +6,9 @@ from enum import Enum
 import subprocess
 import platform
 import atexit
-import protocols.IP as IP
-from protocols.utils import Utils
+import IP
+from utils import Utils
+from IP import IPHeader, IPPacket
 
 class ICMPType(Enum):
     ECHO_REPLY = 0  # Echo reply (used to ping)
@@ -68,9 +69,9 @@ class ICMP:
             icmp_packet = icmp_header + payload  
             
             # Create IP header
-            ip_header = IP.IPHeader(source_ipv4, destination_ipv4, protocol=IP.IPProtocol.ICMP, ttl=ttl)
-            ip_header = ip_header.build_packet(payload_length_bytes=len(icmp_packet))  
-            packet = ip_header + icmp_packet
+            ip_header = IPHeader(source_ipv4, destination_ipv4, protocol=IP.IPProtocol.ICMP, ttl=ttl)
+            ip_packet = IPPacket(header=ip_header, payload=icmp_packet)
+            packet = ip_packet.build_packet()
             
             my_socket.sendto(packet, (destination_ipv4, 1254))
         
@@ -228,4 +229,4 @@ class ICMP:
             except subprocess.CalledProcessError:
                 print(f"Failed to delete firewall rule '{RULE_NAME}'. You may need to remove it manually.")
 
-ICMP.ping("192.168.1.6","8.8.8.8")
+ICMP.ping("172.18.121.202","8.8.8.8")
