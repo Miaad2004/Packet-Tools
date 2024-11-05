@@ -180,6 +180,25 @@ class TCPConnection:
         
         if self.verbose:
             print(f"ACK packet sent with seq number: {self.our_seq_number}, ack number: {self.server_seq_number + 1}")
+    
+    def _listen(self, timeout: int = 1):
+        self.recv_socket.settimeout(timeout)
+        
+        while True:
+            packet = self.recv_socket.recv(4096)
+            ip_header, tcp_header, payload = self._parse_packet(packet)
+            
+            # check ports
+            if tcp_header.source_port != self.dest_port and tcp_header.dest_port != self.source_port:
+                continue
+            
+            # packet verified
+            if self.verbose:
+                print(f"Packet received. seq number: {tcp_header.sequence_number}")
+            
+            break
+        
+        return ip_header, tcp_header, payload
     def open():
         pass
     
