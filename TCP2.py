@@ -199,6 +199,15 @@ class TCPConnection:
             break
         
         return ip_header, tcp_header, payload
+    def _parse_packet(self, packet):
+        if len(packet) < 40:
+            raise ValueError("Packet is too small to be a TCP packet")
+        
+        ip_header = IPHeader.from_bytes(packet[:20])
+        tcp_header = TCPHeader.from_bytes(packet[20:40])
+        payload = packet[40:]
+        
+        return ip_header, tcp_header, payload
     def open():
         pass
     
