@@ -59,6 +59,29 @@ class TCPHeader:
                              self.checksum, self.urgent_pointer,)
         
         return header
+    @staticmethod
+    def from_bytes(tcp_header_bytes: bytes):
+        source_port, dest_port, sequence_number, ack_number, \
+        flags, window, checksum, urgent_pointer = struct.unpack("!HHIIHHHH", tcp_header_bytes)
+        
+        tcp_header = TCPHeader("", "", source_port, dest_port)
+        tcp_header.sequence_number = sequence_number
+        tcp_header.ack_number = ack_number
+        tcp_header.data_offset = flags >> 12
+        tcp_header.reserved = (flags >> 8) & 0xF
+        tcp_header.CWR = (flags >> 7) & 1
+        tcp_header.ECE = (flags >> 6) & 1
+        tcp_header.URG = (flags >> 5) & 1
+        tcp_header.ACK = (flags >> 4) & 1
+        tcp_header.PSH = (flags >> 3) & 1
+        tcp_header.RST = (flags >> 2) & 1
+        tcp_header.SYN = (flags >> 1) & 1
+        tcp_header.FIN = flags & 1
+        tcp_header.window = window
+        tcp_header.checksum = checksum
+        tcp_header.urgent_pointer = urgent_pointer
+        
+        return tcp_header
 
 class ConnectionState(Enum):
     CLOSED = 0
