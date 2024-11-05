@@ -180,7 +180,6 @@ class TCPConnection:
         
         if self.verbose:
             print(f"ACK packet sent with seq number: {self.our_seq_number}, ack number: {self.server_seq_number + 1}")
-    
     def open():
         pass
     
