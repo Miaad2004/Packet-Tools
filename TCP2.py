@@ -218,6 +218,16 @@ class TCPConnection:
         self.send_packet(tcp_packet)
         if self.verbose:
             print(f"RST packet sent with seq number: {self.our_seq_number}")
+    def _send_fin(self):
+        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
+        tcp_header.FIN = 1
+        tcp_header.sequence_number = self.our_seq_number
+        tcp_packet = TCPPacket(tcp_header)
+        self.send_packet(tcp_packet)
+        self.our_seq_number += 1
+        
+        if self.verbose:
+            print(f"FIN packet sent with seq number: {self.our_seq_number}")
     def open():
         pass
     
