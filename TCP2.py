@@ -263,6 +263,43 @@ class TCPConnection:
         if self.verbose:
             print("Handshake complete")
     
+    def _listen_for_finack(self, timeout: int = 1):
+        self.recv_socket.settimeout(timeout)
+        
+        while True:
+            packet = self.recv_socket.recv(4096)
+            ip_header, tcp_header, payload = self._parse_packet(packet)
+            
+            # check ports
+            if tcp_header.source_port != self.dest_port and tcp_header.dest_port != self.source_port:
+                continue
+            
+            # check ack numbers
+            if tcp_header.ack_number != self.our_seq_number:
+                if self.verbose:
+                    print(f"Invalid ack number. expected {self.our_seq_number}, got {tcp_header.ack_number}")
+                continue
+            
+            # check for reset
+            if tcp_header.RST:
+                if self.verbose:
+                    print("Connection reset by peer")
+                continue
+            
+            # check for FIN, ACK
+            if not tcp_header.FIN or not tcp_header.ACK:
+                if self.verbose:
+                    print("Not a FIN-ACK packet")
+                continue
+            
+            self.server_seq_number = tcp_header.sequence_number
+            
+            if self.verbose:
+                print(f"FIN-ACK packet received. seq number: {tcp_header.sequence_number}")
+            
+            return True
+        
+    
     def open():
         pass
     
