@@ -256,6 +256,13 @@ class TCPConnection:
                 print("Timeout waiting for SYN-ACK")
             raise
         
+        # send ACK
+        self._send_ack()
+        self.connection_state = ConnectionState.ESTABLISHED
+        
+        if self.verbose:
+            print("Handshake complete")
+    
     def open():
         pass
     
