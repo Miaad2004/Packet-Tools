@@ -240,6 +240,22 @@ class TCPConnection:
         except socket.timeout:
             print("Timeout waiting for SYN-ACK")
             raise
+    
+    def perform_handshake(self, timeout: int = 1):
+        self._send_syn()
+        self.connection_state = ConnectionState.SYN_SENT
+        
+        # Wait for SYN-ACK
+        try:
+            if not self._listen_for_handshake(timeout):
+                return False
+            self.connection_state = ConnectionState.SYN_RECEIVED
+        
+        except socket.timeout:
+            if self.verbose:
+                print("Timeout waiting for SYN-ACK")
+            raise
+        
     def open():
         pass
     
