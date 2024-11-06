@@ -1,10 +1,12 @@
 from IP import IPHeader, IPProtocol, IPPacket
+import Ethernet
 import struct
 import socket
 import random
 from utils import Utils
 import collections
 from enum import Enum
+import time
 
 class TCPHeader:
     def __init__(self, source_ip: str, dest_ip: str, source_port: int, dest_port: int):
@@ -59,6 +61,7 @@ class TCPHeader:
                              self.checksum, self.urgent_pointer,)
         
         return header
+    
     @staticmethod
     def from_bytes(tcp_header_bytes: bytes):
         source_port, dest_port, sequence_number, ack_number, \
@@ -97,15 +100,11 @@ class ConnectionState(Enum):
     TIME_WAIT = 10
 
 class TCPPacket:
-    def __init__(self, header: TCPHeader, payload: bytes):
+    def __init__(self, header: TCPHeader, payload: bytes = b""):
         self.header = header
         self.payload = payload
         self.header.payload = payload  
-        
-        self.retransmission_queue = collections.deque()
-        self.send_buffer = []
-        self.receive_buffer = []
-        current_segment = None
+        self.send_or_recv_time = None
         
 
     def build_packet(self):
@@ -199,6 +198,35 @@ class TCPConnection:
             break
         
         return ip_header, tcp_header, payload
+    
+    def _listen_for_handshake(self, timeout: int = 1):
+        ip_header, tcp_header, _ = self._listen(timeout)
+        
+        # check ack numbers
+        if tcp_header.ack_number != self.our_seq_number:
+            if self.verbose:
+                print(f"Invalid ack number. expected {self.our_seq_number}, got {tcp_header.ack_number}")
+            return False
+        
+        # check for reset
+        if tcp_header.RST:
+            if self.verbose:
+                print("Connection reset by peer")
+            return False
+        
+        # check for SYN, ACK
+        if not tcp_header.SYN or not tcp_header.ACK:
+            if self.verbose:
+                print("Not a SYN-ACK packet")
+            return False
+        
+        # packet verified
+        self.server_seq_number = tcp_header.sequence_number
+        if self.verbose:
+            print(f"SYN-ACK packet received. server seq number: {self.server_seq_number}")
+        
+        return True
+    
     def _parse_packet(self, packet):
         if len(packet) < 40:
             raise ValueError("Packet is too small to be a TCP packet")
@@ -218,6 +246,7 @@ class TCPConnection:
         self.send_packet(tcp_packet)
         if self.verbose:
             print(f"RST packet sent with seq number: {self.our_seq_number}")
+    
     def _send_fin(self):
         tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
         tcp_header.FIN = 1
@@ -303,8 +332,30 @@ class TCPConnection:
     def open():
         pass
     
-    def close():
-        pass
+    def close(self):
+        assert self.connection_state == ConnectionState.ESTABLISHED, "Connection is not established"
+        
+        if self.connection_state == ConnectionState.ESTABLISHED:
+            self.connection_state = ConnectionState.FIN_WAIT_1
+        
+        self._send_fin()
+        
+        # Wait for FIN-ACK
+        try:
+            if not self._listen_for_finack():
+                return False
+        
+        except socket.timeout:
+            self.abort()
+            if self.verbose:
+                print("Timeout waiting for FIN-ACK")
+            raise
+        
+        time.sleep(0.5)
+        # send final ACK
+        self._send_ack()
+        
+        
     
     def send():
         pass
@@ -312,12 +363,34 @@ class TCPConnection:
     def receive():
         pass
     
-    def abort():
-        pass
+    def abort(self):
+        self._send_reset()
+        self.connection_state = ConnectionState.CLOSED
+        if self.verbose:
+            print("Connection aborted")
+            
     
-    def status():
-        pass
+    def status(self):
+        return self.connection_state
     
     
     
+
+def test():
+    interface = 'eth0'
+    source_MAC = "00:15:5d:69:b4:e5"
+    dest_MAC = "00:15:5d:ac:5f:57"
+    source_ip = "172.18.121.202"
+    dest_ip = "192.168.1.1"
+    source_port = random.randint(1024, 65535)
+    dest_port = 80
+    
+    tcp_connection = TCPConnection(source_MAC, dest_MAC, source_ip, dest_ip, source_port, dest_port, interface)
+    tcp_connection.perform_handshake()
+    time.sleep(2)
+    tcp_connection.close()
+    time.sleep(2)
+    #tcp_connection.abort()
+
+test()
     
