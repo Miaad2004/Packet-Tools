@@ -228,6 +228,18 @@ class TCPConnection:
         
         if self.verbose:
             print(f"FIN packet sent with seq number: {self.our_seq_number}")
+    
+    def perform_half_hadnshake(self, timeout: int = 1):
+        self._send_syn()
+        
+        # Wait for SYN-ACK
+        try:
+            if not self._listen_for_handshake(timeout):
+                return False
+        
+        except socket.timeout:
+            print("Timeout waiting for SYN-ACK")
+            raise
     def open():
         pass
     
