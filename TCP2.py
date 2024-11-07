@@ -7,6 +7,7 @@ from utils import Utils
 import collections
 from enum import Enum
 import time
+import threading
 
 class TCPHeader:
     def __init__(self, source_ip: str, dest_ip: str, source_port: int, dest_port: int):
@@ -88,16 +89,14 @@ class TCPHeader:
 
 class ConnectionState(Enum):
     CLOSED = 0
-    LISTEN = 1
     SYN_SENT = 2
-    SYN_RECEIVED = 3
     ESTABLISHED = 4
-    FIN_WAIT_1 = 5
-    FIN_WAIT_2 = 6
-    CLOSE_WAIT = 7
     CLOSING = 8
     LAST_ACK = 9
-    TIME_WAIT = 10
+    WAITING_GOR_FINAL_ACK = 10
+    NOT_INITIALIZED = 11
+        
+
 
 class TCPPacket:
     def __init__(self, header: TCPHeader, payload: bytes = b""):
@@ -111,7 +110,18 @@ class TCPPacket:
         tcp_header = self.header.build_header()
         return tcp_header + self.payload
 
+
 class TCPConnection:
+    """
+    simple tcp implementation using raw sockets
+    
+    * Doesn't support packet fragmentation
+    * Doesn't support flow control
+    * Doesn't support congestion control
+    * Doesn't support options in TCP header
+    * Supports handshaking, simple data transfer, graceful close, retransmission, and abort
+    
+    """
     def __init__(self, source_MAC: str, dest_MAC: str, source_ip: str, dest_ip: str, source_port: int, dest_port: int, interface: str):
         self.source_MAC = source_MAC
         self.dest_MAC = dest_MAC
@@ -121,15 +131,27 @@ class TCPConnection:
         self.dest_port = dest_port
         self.interface = interface
         
+        self.verbose = 1
+        
+        # TCB (Transmission Control Block)
         self.retransmission_queue = collections.deque()
         self.send_buffer = []
         self.receive_buffer = []
         self.current_segment = None
-        self.connection_state = ConnectionState.CLOSED
+        self.connection_state = ConnectionState.NOT_INITIALIZED
         
         self.our_seq_number = random.randint(0, 2**32 - 1)
         self.server_seq_number = None
-        self.verbose = 1
+        
+        
+        self.retransmission_timeout = 5
+        self.keep_alive_timeout = 20
+        self.last_activity_time = None
+        
+        # Threads
+        self.listener_thread = threading.Thread(target=self._listen)
+        self.timer_thread = threading.Thread(target=self._timer)    # for retransmission, keep alive etc.
+        
         
         # In Linux "Receiving of all IP protocols via IPPROTO_RAW is not possible using raw sockets."
         # source: https://stackoverflow.com/questions/40795772/cant-receive-packets-to-raw-socket
