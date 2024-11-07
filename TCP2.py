@@ -254,6 +254,17 @@ class TCPConnection:
                     print("Timeout waiting for packet")
                 continue
 
+    def _timer(self):
+        while self.connection_state != ConnectionState.CLOSED:
+            if self.connection_state == ConnectionState.ESTABLISHED:
+                if Utils.get_current_time() - self.last_activity_time > self.keep_alive_timeout:
+                    packet = self.create_packet(SYN=False, ACK=True, FIN=False, RST=False)
+                    packet.header.sequence_number = self.our_seq_number - 1  
+                    self.send_packet(packet)
+                    self.last_activity_time = Utils.get_current_time()
+                    
+                    if self.verbose:
+                        print("Keep-alive packet sent")
             if self.verbose:
                 print(f"Packet received. seq number: {tcp_header.sequence_number}")
             
