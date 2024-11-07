@@ -265,24 +265,48 @@ class TCPConnection:
                     
                     if self.verbose:
                         print("Keep-alive packet sent")
-            if self.verbose:
-                print(f"Packet received. seq number: {tcp_header.sequence_number}")
-            
-            break
-        
-        return ip_header, tcp_header, payload
     
-    def _listen_for_handshake(self, timeout: int = 1):
-        ip_header, tcp_header, _ = self._listen(timeout)
-        
-        # check ack numbers
-        if tcp_header.ack_number != self.our_seq_number:
+    def _handle_packet(self, tcp_header, payload):
+        # SYN-ACK
+        if tcp_header.SYN and tcp_header.ACK:
+            self.on_SYN_ACK_received(tcp_header)
             if self.verbose:
-                print(f"Invalid ack number. expected {self.our_seq_number}, got {tcp_header.ack_number}")
-            return False
+                print("SYN-ACK received")
+            
+            return
         
-        # check for reset
+        # FIN-ACK
+        if tcp_header.FIN and tcp_header.ACK:
+            self.on_FIN_ACK_received(tcp_header)
+            if self.verbose:
+                print("FIN-ACK received")
+            
+            return
+        
+        # FIN
+        elif tcp_header.FIN:
+            self.on_FIN_received()
+            if self.verbose:
+                print("FIN received")
+            
+            return
+        
+        # RST
         if tcp_header.RST:
+            self.on_reset_received()
+            if self.verbose:
+                print("RST received")
+            
+            return
+        
+        # ACK
+        if tcp_header.ACK:
+            self.on_ACK_received(tcp_header, payload)
+            if self.verbose:
+                print("ACK received")
+            
+            return
+                
             if self.verbose:
                 print("Connection reset by peer")
             return False
