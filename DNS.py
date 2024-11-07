@@ -82,10 +82,20 @@ class DNS:
             q = self._build_query(query, query_type, query_class)
             
             return header + q
+    
+    @staticmethod
+    def parse_packet(packet: bytes):
+        header = struct.unpack("!HHHHHH", packet[:12])
+        transaction_id, flags, n_queries, n_answers, ns_count, na_count = header
+        print("Transaction ID:", transaction_id)
+        print("Flags:", flags)
+        print("Number of queries:", n_queries)
+        print("Number of answers:", n_answers)
+        print("Number of name servers:", ns_count)
+        print("Number of additional records:", na_count)
         
+        return packet[12:]
         
-        
-
     
 def test(query, source_ip, dest_ip, source_port=12345, dest_port=53, query_type=QueryType.A):
     dns_client = DNS()
