@@ -175,11 +175,11 @@ class TCPConnection:
     # **** Main Thread methods ****
     def send_packet(self, tcp_packet: TCPPacket): 
         tcp_packet.send_or_recv_time = Utils.get_current_time()
-        tcp_packet = tcp_packet.build_packet()
+        tcp_packet_built = tcp_packet.build_packet()
         
         # Create IP header
         ip_header = IPHeader(self.source_ip, self.dest_ip, IPProtocol.TCP)
-        ip_packet = IPPacket(ip_header, tcp_packet).build_packet()
+        ip_packet = IPPacket(ip_header, tcp_packet_built).build_packet()
         
          
         # create Ethernet header
@@ -188,32 +188,14 @@ class TCPConnection:
         # port is set to 0 because we are sending raw IP packets
         self.send_sock.sendto(frame, (self.interface, 0))
         self.retransmission_queue.append(tcp_packet)
-    
-    def _send_syn(self):
-        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
-        tcp_header.SYN = 1
-        tcp_header.sequence_number = self.our_seq_number
-        tcp_packet = TCPPacket(tcp_header)
-        self.send_packet(tcp_packet)
-        self.our_seq_number += 1
         
-        if self.verbose:
-            print("SYN packet sent")
-    
-    def _send_ack(self):
-        self.server_seq_number += 1
+        if tcp_packet.header.SYN or tcp_packet.header.FIN:
+            self.our_seq_number += 1
+        # if not tcp_packet.header.ACK and len(tcp_packet.payload) == 0:
+        #     self.our_seq_number += 1
         
-        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
-        tcp_header.ACK = 1
-        
-        tcp_header.sequence_number = self.our_seq_number
-        tcp_header.ack_number = self.server_seq_number 
-        tcp_packet = TCPPacket(tcp_header)
-
-        self.send_packet(tcp_packet)
-        
-        if self.verbose:
-            print(f"ACK packet sent with seq number: {self.our_seq_number}, ack number: {self.server_seq_number + 1}")
+        if len(tcp_packet.payload) > 0:
+            self.our_seq_number += len(tcp_packet.payload) 
     
     def _listen(self, timeout: int = 1):
         self.recv_socket.settimeout(timeout)
