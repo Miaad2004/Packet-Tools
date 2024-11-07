@@ -31,8 +31,6 @@ class UDPPacket:
         
         return pseudo_header
         
-        
-    
     def calculate_checksum(self, packet_header):
         # pad even packets
         if len(packet_header) % 2 == 1:
@@ -68,4 +66,15 @@ class UDPPacket:
         packet += payload
         
         return packet
+    
+    @staticmethod
+    def from_bytes(udp_packet_bytes: bytes):
+        source_port, dest_port, total_length, checksum = struct.unpack("!HHHH", udp_packet_bytes[:8])
+        payload = udp_packet_bytes[8:]
+        
+        udp_packet = UDPPacket(source_port=source_port, dest_port=dest_port)
+        udp_packet.total_length = total_length
+        udp_packet.checksum = checksum
+        
+        return udp_packet, payload
 
