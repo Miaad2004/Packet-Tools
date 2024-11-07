@@ -175,11 +175,11 @@ class TCPConnection:
     # **** Main Thread methods ****
     def send_packet(self, tcp_packet: TCPPacket): 
         tcp_packet.send_or_recv_time = Utils.get_current_time()
-        tcp_packet_built = tcp_packet.build_packet()
+        tcp_packet = tcp_packet.build_packet()
         
         # Create IP header
         ip_header = IPHeader(self.source_ip, self.dest_ip, IPProtocol.TCP)
-        ip_packet = IPPacket(ip_header, tcp_packet_built).build_packet()
+        ip_packet = IPPacket(ip_header, tcp_packet).build_packet()
         
          
         # create Ethernet header
@@ -188,27 +188,72 @@ class TCPConnection:
         # port is set to 0 because we are sending raw IP packets
         self.send_sock.sendto(frame, (self.interface, 0))
         self.retransmission_queue.append(tcp_packet)
+    
+    def _send_syn(self):
+        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
+        tcp_header.SYN = 1
+        tcp_header.sequence_number = self.our_seq_number
+        tcp_packet = TCPPacket(tcp_header)
+        self.send_packet(tcp_packet)
+        self.our_seq_number += 1
         
-        if tcp_packet.header.SYN or tcp_packet.header.FIN:
-            self.our_seq_number += 1
-        # if not tcp_packet.header.ACK and len(tcp_packet.payload) == 0:
-        #     self.our_seq_number += 1
+        if self.verbose:
+            print("SYN packet sent")
+    
+    def _send_ack(self):
+        self.server_seq_number += 1
         
-        if len(tcp_packet.payload) > 0:
-            self.our_seq_number += len(tcp_packet.payload) 
+        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
+        tcp_header.ACK = 1
+        
+        tcp_header.sequence_number = self.our_seq_number
+        tcp_header.ack_number = self.server_seq_number 
+        tcp_packet = TCPPacket(tcp_header)
+
+        self.send_packet(tcp_packet)
+        
+        if self.verbose:
+            print(f"ACK packet sent with seq number: {self.our_seq_number}, ack number: {self.server_seq_number + 1}")
     
     def _listen(self, timeout: int = 1):
         self.recv_socket.settimeout(timeout)
         
-        while True:
-            packet = self.recv_socket.recv(4096)
-            ip_header, tcp_header, payload = self._parse_packet(packet)
+        while self.connection_state != ConnectionState.CLOSED:
+            try: 
+                packet = self.recv_socket.recv(4096)
+                ip_header, tcp_header, payload = self._parse_packet(packet)
+                
+                # check ports
+                if tcp_header.source_port != self.dest_port and tcp_header.dest_port != self.source_port:
+                    continue
+                
+                # packet verified
+                self.last_activity_time = Utils.get_current_time()
+                if self.verbose:
+                    print(f"Packet received. seq number: {tcp_header.sequence_number}")
+                
+                # Check ack number if ack is set
+                if tcp_header.ACK:
+                    if tcp_header.ack_number != self.our_seq_number:
+                        if self.verbose:
+                            print(f"Invalid ack number. Expected: {self.our_seq_number}, got: {tcp_header.ack_number}")
+                        continue
+                
+                # Check sequence number
+                if self.connection_state == ConnectionState.ESTABLISHED:
+                    if tcp_header.sequence_number != self.server_seq_number:
+                        if self.verbose:
+                            print(f"Invalid sequence number. Expected: {self.server_seq_number}, got: {tcp_header.sequence_number}")
+                        continue
+                
+                #self._handle_packet(tcp_header, payload)
+                threading.Thread(target=self._handle_packet, args=(tcp_header, payload)).start()
             
-            # check ports
-            if tcp_header.source_port != self.dest_port and tcp_header.dest_port != self.source_port:
+            except socket.timeout:
+                if self.verbose:
+                    print("Timeout waiting for packet")
                 continue
-            
-            # packet verified
+
             if self.verbose:
                 print(f"Packet received. seq number: {tcp_header.sequence_number}")
             
