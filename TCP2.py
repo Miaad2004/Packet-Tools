@@ -160,6 +160,19 @@ class TCPConnection:
         self.send_sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
         self.recv_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
     
+    def create_packet(self, SYN: bool, ACK: bool, FIN: bool, RST: bool, payload: bytes = b""):
+        tcp_header = TCPHeader(self.source_ip, self.dest_ip, self.source_port, self.dest_port)
+        tcp_header.SYN = SYN
+        tcp_header.ACK = ACK
+        tcp_header.FIN = FIN
+        tcp_header.RST = RST
+        tcp_header.sequence_number = self.our_seq_number
+        if ACK:
+            tcp_header.ack_number = self.server_seq_number
+        tcp_packet = TCPPacket(tcp_header, payload)
+        return tcp_packet
+    
+    # **** Main Thread methods ****
     def send_packet(self, tcp_packet: TCPPacket): 
         tcp_packet.send_or_recv_time = Utils.get_current_time()
         tcp_packet = tcp_packet.build_packet()
