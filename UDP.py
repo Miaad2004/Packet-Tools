@@ -1,5 +1,5 @@
 import struct
-from IP import IPProtocol
+from IPv4 import IPProtocol
 
 # Based on https://en.wikipedia.org/wiki/User_Datagram_Protocol
 class UDPPacket:
