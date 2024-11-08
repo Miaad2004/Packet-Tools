@@ -91,7 +91,6 @@ class PacketTools:
             
             try:
                 res = ICMP.listen_for_reply(timeout=timeout, my_socket=sock)
-                print(res)
                 if res:
                     is_online = True
             
@@ -482,6 +481,7 @@ class CLI:
                     
                     interactive_args = parser.parse_args(user_input.split())
                     self.execute_command(interactive_args)
+                    print("")
                     
                 except SystemExit:
                     pass  # Ignore argparse exit
