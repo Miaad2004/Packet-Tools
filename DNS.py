@@ -1,9 +1,10 @@
 import socket
 import struct
-import IP
+import IPv4
 import UDP
 import random
 import enum
+from Ethernet import EthernetFrame, EthernetType
 
 class QueryType(enum.Enum):
     A = 1       # IPv4 address
@@ -87,50 +88,131 @@ class DNS:
     def parse_packet(packet: bytes):
         header = struct.unpack("!HHHHHH", packet[:12])
         transaction_id, flags, n_queries, n_answers, ns_count, na_count = header
-        print("Transaction ID:", transaction_id)
-        print("Flags:", flags)
-        print("Number of queries:", n_queries)
-        print("Number of answers:", n_answers)
-        print("Number of name servers:", ns_count)
-        print("Number of additional records:", na_count)
         
-        return packet[12:]
+        # Debug logging
+        print(f"Parsing DNS packet of length: {len(packet)}")
+        print(f"Transaction ID: {transaction_id}")
+        print(f"Flags: {bin(flags)}")  # Show binary for better debugging
+        print(f"Answers: {n_answers}")
         
+        offset = 12
+        
+        # Skip question section using compression pointer awareness
+        for _ in range(n_queries):
+            while offset < len(packet):
+                length = packet[offset]
+                if length & 0xC0:  # Check for compression pointer
+                    offset += 2    # Skip compression pointer
+                    break
+                elif length == 0:  # End of name
+                    offset += 1
+                    break
+                offset += length + 1
+            offset += 4  # Skip QTYPE and QCLASS
+        
+        # Parse answer section with compression pointer handling
+        for _ in range(n_answers):
+            if offset >= len(packet):
+                return None
+                
+            # Handle name compression in answer
+            if packet[offset] & 0xC0:  # Compression pointer
+                offset += 2
+            else:
+                while packet[offset] != 0:
+                    offset += packet[offset] + 1
+                offset += 1
+            
+            type_, class_, ttl, rdlength = struct.unpack("!HHIH", packet[offset:offset+10])
+            offset += 10
+            
+            if type_ == QueryType.A.value:
+                try:
+                    ipv4 = struct.unpack("!BBBB", packet[offset:offset+4])
+                    return ".".join(map(str, ipv4))
+                except struct.error:
+                    print(f"Error unpacking IPv4 at offset {offset}")
+                    return None
+            
+            offset += rdlength
+        return None
     
-def test(query, source_ip, dest_ip, source_port=12345, dest_port=53, query_type=QueryType.A):
-    dns_client = DNS()
-    dns_query = dns_client.build_packet(query, query_type)
+    # Adjust the slicing in domain_to_ipv4
+    @staticmethod
+    def domain_to_ipv4(domain: str, source_ip: str, source_mac: str, dest_mac: str, dns_server: str = "8.8.8.8", source_port: int = 12345, dest_port: int = 53):
+        dns_client = DNS()
+        dns_query = dns_client.build_packet(domain, QueryType.A)
     
-    udp_packet = UDP.UDPPacket(source_ip, dest_ip, source_port, dest_port)
-    udp_payload = dns_query
-    udp_header = udp_packet.build_packet(udp_payload)
+        dest_ip = dns_server
     
-    ip_packet = IP.IPHeader(source_ip, dest_ip, IP.IPProtocol.UDP)
-    ip_header = ip_packet.build_header(payload_length_bytes=len(udp_header))
+        udp_packet = UDP.UDPPacket(source_ip, dest_ip, source_port, dest_port)
+        udp_packet = udp_packet.build_packet(dns_query)
     
-    packet = ip_header + udp_header
+        ip_header = IPv4.IPHeader(source_ip, dest_ip, IPv4.IPProtocol.UDP)
+        ip_packet = IPv4.IPPacket(ip_header, udp_packet).build_packet()
+        #ip_header = ip_packet.build_header(payload_length_bytes=len(udp_packet))
     
-    with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP) as s:
-        s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
-        s.sendto(packet, (dest_ip, 0))
+        ip_payload = ip_packet
     
-        print(f"Sent DNS query for {query} ({query_type.name}) to {dest_ip}")
+        ethernet_frame = EthernetFrame(source_mac, dest_mac, ip_payload, EthernetType.IPv4, use_software_crc=False)
+        ethernet_packet = ethernet_frame.build_frame()
+    
+        with socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003)) as s:
+            s.bind(("eth0", 0))
+            s.send(ethernet_packet)
+    
+            try:
+                response = s.recv(65535)
+                print("Received response from DNS server.")
+                print("Raw DNS Response:", response[42:].hex())
+                dns_response = response[42:]
+                ipv4_address = DNS.parse_packet(dns_response)
+                return ipv4_address
+    
+            except socket.timeout:
+                print("Request timed out.")
+                return None
 
-        # Step 5: Receive the response
-        try:
-            response = s.recv(65535)  # Large buffer size to capture full response
-            print("Received response from DNS server.")
-            print("Response (hex):", response.hex())  # Print raw response in hex
-        except socket.timeout:
-            print("Request timed out.")
+if __name__ == "__main__":
+    interface = 'eth0'
+    source_MAC = "00:15:5d:69:b4:e5"
+    dest_MAC = "00:15:5d:ac:5f:57"
+    source_ip = "172.18.121.202"
+    print(DNS.domain_to_ipv4("google.com", source_ip, source_MAC, dest_MAC))
+    # def test(query, source_ip, dest_ip, source_port=12345, dest_port=53, query_type=QueryType.A):
+    #     dns_client = DNS()
+    #     dns_query = dns_client.build_packet(query, query_type)
+        
+    #     udp_packet = UDP.UDPPacket(source_ip, dest_ip, source_port, dest_port)
+    #     udp_payload = dns_query
+    #     udp_header = udp_packet.build_packet(udp_payload)
+        
+    #     ip_packet = IP.IPHeader(source_ip, dest_ip, IP.IPProtocol.UDP)
+    #     ip_header = ip_packet.build_header(payload_length_bytes=len(udp_header))
+        
+    #     packet = ip_header + udp_header
+        
+    #     with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP) as s:
+    #         s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+    #         s.sendto(packet, (dest_ip, 0))
+        
+    #         print(f"Sent DNS query for {query} ({query_type.name}) to {dest_ip}")
+
+    #         # Step 5: Receive the response
+    #         try:
+    #             response = s.recv(65535)  # Large buffer size to capture full response
+    #             print("Received response from DNS server.")
+    #             print("Response (hex):", response.hex())  # Print raw response in hex
+    #         except socket.timeout:
+    #             print("Request timed out.")
 
 
 
-# Test for an IPv6 address record (AAAA)
-test("google.com", "172.18.121.202", "8.8.8.8", query_type=QueryType.AAAA)
+    # # Test for an IPv6 address record (AAAA)
+    # test("google.com", "172.18.121.202", "8.8.8.8", query_type=QueryType.AAAA)
 
-# Test for a Mail Exchange (MX) record
-test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.MX)
+    # # Test for a Mail Exchange (MX) record
+    # test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.MX)
 
-# Test for a Canonical Name (CNAME) record
-test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.CNAME)
+    # # Test for a Canonical Name (CNAME) record
+    # test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.CNAME)
