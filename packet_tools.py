@@ -1,7 +1,6 @@
 import socket
 import time
 import argparse
-import threading
 import argparse
 from colorama import Fore, Style, init
 import sys
@@ -11,8 +10,6 @@ from ICMP import ICMP, ICMPType
 import UDP
 import TCP
 import DNS
-import HTTP
-import signal
 import random
 from utils import Utils
 import Ethernet
@@ -23,9 +20,9 @@ import psutil
 init(autoreset=True)
 
 class PacketTools:
-    famous_ports = {80, 443, 21, 22, 23, 25, 53, 110, 143, 161, 194, 389, 443, 465, 514, 587, 636, 993, 995}
+    famous_ports = {80, 443, 21, 22, 23, 25, 53, 110, 143, 161, 194, 389, 443, 465, 514, 587, 636, 993, 995, 8080}
     
-    def __init__(self):
+    def __init__(self, source_ipv4_address, interface, source_MAC, dest_MAC, default_ttl=64):
         # abort if not on linux
         if os.name != "posix":
             print("This program is only supported on Linux.")
@@ -36,20 +33,19 @@ class PacketTools:
             print("Root privileges are required to run this program.")
             sys.exit(1)
         
-        self.source_ipv4_address = "172.18.121.202"#socket.gethostbyname(socket.gethostname())
-        self.interface = "eth0"
-        # automatcally find MAC address
-        self.source_MAC = "00:15:5d:69:b4:e5"
-        self.dest_MAC = "00:15:5d:ac:5f:57"
+        self.source_ipv4_address = source_ipv4_address
+        self.interface = interface
+        self.source_MAC = source_MAC
+        self.dest_MAC =  dest_MAC
         self.source_port = random.randint(1024, 2**16 - 1)
-        self.deafult_ttl = 64
+        self.deafult_ttl = default_ttl
         
         # Increase process priority
-        os.nice(-20)  # -20 is the highest priority, adjust as needed
+        os.nice(-20)  
 
         # Force process to stay on the same core
         p = psutil.Process(os.getpid())
-        p.cpu_affinity([0])  # Pin to core 0, adjust as needed
+        p.cpu_affinity([0])  # Pin to core 0
 
     @staticmethod
     def set_thread_affinity():
@@ -78,7 +74,6 @@ class PacketTools:
             try:
                 response = s.recv(65535)
                 print("Received response from DNS server.")
-                #print("Raw DNS Response:", response[42:].hex())
                 dns_response = response[42:]
                 ipv4_address = DNS_client.parse_packet(dns_response)
                 return ipv4_address
@@ -104,8 +99,11 @@ class PacketTools:
             except socket.timeout:
                 pass
         
+        if is_online:
+            return is_online
+        
         # check famous ports
-        with ThreadPoolExecutor(3) as executor:
+        with ThreadPoolExecutor() as executor:
             # scan TCP and UDP
             futures = [executor.submit(self.scan_port, host, port, mode="TCP") for port in self.famous_ports]
             futures += [executor.submit(self.scan_port, host, port, mode="UDP") for port in self.famous_ports]
@@ -114,19 +112,19 @@ class PacketTools:
         
         return is_online
     
-    def scan_port(self, host, port, mode="TCP", timeout=2, verbose=True):
+    def scan_port(self, host, port, mode="TCP", timeout=2, verbose=False, udp_payload_size=16):
         assert mode in ["TCP", "UDP"]
         port_status = None
         source_port = random.randint(1024, 2**16 - 1)
         if mode == "TCP":
             tcp_conn = TCP.TCPConnection(self.source_MAC, self.dest_MAC, self.source_ipv4_address,
                                          host, source_port, port, self.interface)
-            tcp_conn.verbose = True
+            tcp_conn.verbose = verbose
             
             port_status, delay = tcp_conn.is_port_open_stealth(port_timeout=timeout, socket_timeout=timeout)
         
         elif mode == "UDP":
-            udp_packet = UDP.UDPPacket(self.source_ipv4_address, host, source_port, port).build_packet(payload=b"")
+            udp_packet = UDP.UDPPacket(self.source_ipv4_address, host, source_port, port).build_packet(payload=os.urandom(udp_payload_size))
             ip_header = IPv4.IPHeader(self.source_ipv4_address, host, IPv4.IPProtocol.UDP)
             ip_packet = IPv4.IPPacket(ip_header, udp_packet).build_packet()
             ethernet_frame = Ethernet.EthernetFrame(self.source_MAC, self.dest_MAC, ip_packet,
@@ -135,7 +133,7 @@ class PacketTools:
 
             with socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3)) as s:
                 # set timeout
-                s.settimeout(timeout)
+                s.settimeout(timeout + 1)
                 s.bind((self.interface, 0))
                 start_time = Utils.get_current_time()
                 s.send(ethernet_frame)
@@ -144,15 +142,26 @@ class PacketTools:
                 try:
                     while Utils.get_current_time() - start_time < timeout:
                         response = s.recv(1024)
+                        received_time = Utils.get_current_time()
+                        
                         IPv4_packet = IPv4.IPHeader.from_bytes(response[14: 34])
                         if IPv4_packet.source_ip != host or IPv4_packet.destination_ip != self.source_ipv4_address:
                             continue
-    
+                        
                         # Check if response is ICMP Port Unreachable
                         if IPv4_packet.protocol == IPv4.IPProtocol.ICMP.value:
                             port_status = False  # Port is closed
-                            delay = (Utils.get_current_time() - start_time) * 1000
+                            delay = (received_time - start_time) * 1000
                             break
+                        
+                        # Check if response is UDP
+                        if IPv4_packet.protocol == IPv4.IPProtocol.UDP.value:
+                            UDP_packet, payload = UDP.UDPPacket.from_bytes(response[34:])
+                            if UDP_packet.source_port == port:
+                                port_status = True
+                                delay = (received_time - start_time) * 1000
+                                break
+                        
                         
                 except socket.timeout:
                     port_status = None  # Port is filtered/open (uncertain)
@@ -160,21 +169,19 @@ class PacketTools:
         
         try:
             possible_service = socket.getservbyport(port)
-            host_name = socket.gethostbyaddr(host)
         
-        except Exception:
+        except Exception as e:
             possible_service = None
-            host_name = None
         
         return {"port_number": port, "port_status": port_status, "latency": delay,
-                "possible_service": possible_service, "host_name": host_name, "mode": mode}
+                "possible_service": possible_service, "mode": mode}
 
     
     def calc_average_latency(self, host, port, n=20, mode="TCP"): 
         assert mode in ["TCP", "UDP"]       
         assert port >= 0 and port <= 2**16
         
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(5) as executor:
             futures = [executor.submit(self.threaded_scan_port, host, port, mode) for i in range(n)]
             delays = [future.result()["latency"] for future in futures]
             delays = list(filter(lambda x: x is not None, delays))
@@ -201,10 +208,14 @@ class PacketTools:
                 print("Scanning UDP ports...")
                 udp_futures = [executor.submit(self.scan_port, host, port, "UDP", verbose=False)
                                 for port in range(start_port, end_port + 1)]
+                
                 # Combine results
-                tcp_results = [future.result()["port_status"] for future in tcp_futures]
-                udp_results = [future.result()["port_status"] for future in udp_futures]
-                return {"TCP": tcp_results, "UDP": udp_results}
+                tcp_results = [future.result() for future in tcp_futures]
+                udp_results = [future.result() for future in udp_futures]
+                results = tcp_results + udp_results
+                
+                return results
+            
             else:
                 print(f"Scanning {mode} ports...")
                 futures = [executor.submit(self.scan_port, host, port, mode, verbose=False) 
@@ -239,7 +250,7 @@ class PacketTools:
         
         # except Exception as e:
         #     print(f"Failed closing connection to {host}: {e}")
-        #     tcp_conn.abort()
+        tcp_conn.abort()
         
         return response.decode()
     
@@ -263,114 +274,36 @@ class PacketTools:
     
     def traceroute(self, host, max_hops=30, timeout=1):
         ICMP.traceroute(self.source_ipv4_address, host, max_hops, timeout)
-
-# python
-def cli():
-    # Display version and start time
-    version = "1.0"
-    start_time = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"{Fore.GREEN}PacketTools CLI Version {version}")
-    print(f"Scan started at {start_time}\n")
-
-    parser = argparse.ArgumentParser(
-        description='PacketTools Command Line Interface',
-        formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('-i', '--interactive', action='store_true', help='Enter interactive mode')
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
-
-    # domain_to_ipv4 command
-    parser_domain = subparsers.add_parser('domain_to_ipv4', aliases=['d2ip'], help='Resolve domain to IPv4 address')
-    parser_domain.add_argument('domain', help='Domain name to resolve')
-    parser_domain.add_argument('--dns-server', default='8.8.8.8', help='DNS server to use')
-    parser_domain.add_argument('--dest-port', type=int, default=53, help='Destination port (default: 53)')
-
-    # is_online command
-    parser_online = subparsers.add_parser('is_online', aliases=['io'], help='Check if host is online')
-    parser_online.add_argument('host', help='Host to check')
-    parser_online.add_argument('--timeout', type=int, default=2, help='Timeout in seconds')
-
-    # scan_port command
-    parser_scan_port = subparsers.add_parser('scan_port', aliases=['sp'], help='Scan a specific port on a host')
-    parser_scan_port.add_argument('host', help='Host to scan')
-    parser_scan_port.add_argument('port', type=int, help='Port number to scan')
-    parser_scan_port.add_argument('--mode', choices=['TCP', 'UDP'], default='TCP', help='Protocol to use')
-    parser_scan_port.add_argument('--timeout', type=int, default=2, help='Timeout in seconds')
-
-    # calc_average_latency command
-    parser_latency = subparsers.add_parser('calc_average_latency', aliases=['cal'], help='Calculate average latency to a port')
-    parser_latency.add_argument('host', help='Host to measure')
-    parser_latency.add_argument('port', type=int, help='Port number')
-    parser_latency.add_argument('-n', type=int, default=100, help='Number of samples')
-    parser_latency.add_argument('--mode', choices=['TCP', 'UDP'], default='TCP', help='Protocol to use')
-
-    # scan_port_range command
-    parser_port_range = subparsers.add_parser('scan_port_range', aliases=['spr'], help='Scan a range of ports')
-    parser_port_range.add_argument('host', help='Host to scan')
-    parser_port_range.add_argument('--start-port', type=int, default=1, help='Start of port range')
-    parser_port_range.add_argument('--end-port', type=int, default=1024, help='End of port range')
-    parser_port_range.add_argument('--mode', choices=['TCP', 'UDP', 'ALL'], default='ALL', help='Protocol to use')
-
-    # send_http_get command
-    parser_http_get = subparsers.add_parser('send_http_get', aliases=['get'], help='Send HTTP GET request')
-    parser_http_get.add_argument('user_name', help='User name')
-    parser_http_get.add_argument('host', help='Host to send request to')
-    parser_http_get.add_argument('--port', type=int, default=80, help='Port number (default: 80)')
-
-    # send_http_post command
-    parser_http_post = subparsers.add_parser('send_http_post', aliases=['post'], help='Send HTTP POST request')
-    parser_http_post.add_argument('user_name', help='User name')
-    parser_http_post.add_argument('age', help='Age')
-    parser_http_post.add_argument('host', help='Host to send request to')
-    parser_http_post.add_argument('--port', type=int, default=80, help='Port number (default: 80)')
-
-    # send_http_delete command
-    parser_http_delete = subparsers.add_parser('send_http_delete', aliases=['delete'], help='Send HTTP DELETE request')
-    parser_http_delete.add_argument('user_name', help='User name')
-    parser_http_delete.add_argument('host', help='Host to send request to')
-    parser_http_delete.add_argument('--port', type=int, default=80, help='Port number (default: 80)')
-
-    # ping command
-    parser_ping = subparsers.add_parser('ping', aliases=['p'], help='Ping a host')
-    parser_ping.add_argument('host', help='Host to ping')
-    parser_ping.add_argument('-c', '--count', type=int, default=10, help='Number of packets to send')
-    parser_ping.add_argument('--timeout', type=int, default=1, help='Timeout in seconds')
-    parser_ping.add_argument('--delay', type=int, default=1, help='Delay between packets')
-    parser_ping.add_argument('--size', type=int, default=32, help='Payload size in bytes')
-
-    # traceroute command
-    parser_traceroute = subparsers.add_parser('traceroute', aliases=['tr'], help='Perform traceroute to a host')
-    parser_traceroute.add_argument('host', help='Host to traceroute')
-    parser_traceroute.add_argument('--max-hops', type=int, default=30, help='Maximum number of hops')
-    parser_traceroute.add_argument('--timeout', type=int, default=1, help='Timeout in seconds')
-
-    # Parse arguments
-    args = parser.parse_args()
-
-    # Initialize PacketTools
-    packet_tools = PacketTools()
-
-    def resolve_host(host):
+    
+    def resolve_host(self, host):
         try:
             # Check if host is already an IP address
             socket.inet_aton(host)
             return host
+        
         except OSError:
-            # Resolve domain to IP
             try:
-                return socket.gethostbyname(host)
-            except socket.gaierror:
-                return None
+                return self.domain_to_ipv4(host)
             
-    def execute_command(args):
+            except Exception:
+                return None
+
+
+class CLI:
+    def __init__(self, source_ipv4_address, interface, source_MAC, dest_MAC):
+        self.packet_tools = PacketTools(source_ipv4_address, interface, source_MAC, dest_MAC)
+    
+    def execute_command(self, args):
         try:
             # Resolve host to IP if necessary
-            resolved_host = resolve_host(args.host)
-            if not resolved_host:
-                print(f"{Fore.RED}Unable to resolve host {args.host}")
+            if hasattr(args, 'host'):
+                resolved_host = self.packet_tools.resolve_host(args.host)
+                if not resolved_host:
+                    print(f"{Fore.RED}Unable to resolve host {args.host}")
 
             if args.command in ['domain_to_ipv4', 'd2ip']:
                 print(f"{Fore.YELLOW}Resolving domain {args.domain}...")
-                ip_address = packet_tools.domain_to_ipv4(args.domain, args.dns_server, args.dest_port)
+                ip_address = self.packet_tools.domain_to_ipv4(args.domain, args.dns_server, args.dest_port)
                 if ip_address:
                     print(f"{Fore.GREEN}Domain {args.domain} resolved to {ip_address}")
                 else:
@@ -378,100 +311,200 @@ def cli():
 
             elif args.command in ['is_online', 'io']:
                 print(f"{Fore.YELLOW}Checking if host {args.host} is online...")
-                online = packet_tools.is_online(args.host, args.timeout)
+                online = self.packet_tools.is_online(resolved_host, args.timeout)
                 if online:
-                    print(f"{Fore.GREEN}Host {args.host} is online")
+                    print(f"{Fore.GREEN}Host {resolved_host} is online")
                 else:
-                    print(f"{Fore.RED}Host {args.host} is offline or unreachable")
+                    print(f"{Fore.RED}Host {resolved_host} is offline or unreachable")
 
             elif args.command in ['scan_port', 'sp']:
                 print(f"{Fore.YELLOW}Scanning port {args.port} on host {resolved_host} using {args.mode}...")
-                result = packet_tools.scan_port(resolved_host, args.port, args.mode, args.timeout)
+                result = self.packet_tools.scan_port(resolved_host, args.port, args.mode, args.timeout)
                 if result['port_status']:
                     status = f"{Fore.GREEN}Open"
                 elif result['port_status'] is False:
                     status = f"{Fore.RED}Closed"
                 else:
                     status = f"{Fore.YELLOW}Filtered/Unknown"
+                    
                 print(f"Port {result['port_number']}/{result['mode']} is {status}")
-                print(f"Possible service: {result['possible_service']}")
-                print(f"Host name: {result['host_name']}")
+                
+                if result['possible_service']:
+                    print(f"Possible service: {result['possible_service']}")
+                    
                 if result['latency'] is not None:
-                    print(f"Latency: {result['latency']} ms")
+                    print(f"Latency: {result['latency']: .3f} ms")
                     
             elif args.command in ['calc_average_latency', 'cal']:
                 print(f"{Fore.YELLOW}Calculating average latency to port {args.port} on host {args.host}...")
-                avg_latency = packet_tools.calc_average_latency(args.host, args.port, args.n, args.mode)
+                avg_latency = self.packet_tools.calc_average_latency(resolved_host, args.port, args.n, args.mode)
                 if avg_latency:
-                    print(f"{Fore.GREEN}Average latency: {avg_latency:.2f} ms")
+                    print(f"{Fore.GREEN}Average latency: {avg_latency:.3f} ms")
                 
                 else:
                     print(f"{Fore.RED}Host {args.host} or port {args.port} is unreachable")
 
             elif args.command in ['scan_port_range', 'spr']:
                 print(f"{Fore.YELLOW}Scanning ports {args.start_port}-{args.end_port} on host {resolved_host} using {args.mode}...")
-                results = packet_tools.scan_port_range(resolved_host, args.start_port, args.end_port, args.mode)
+                results = self.packet_tools.scan_port_range(resolved_host, args.start_port, args.end_port, args.mode)
                 for result in results:
                     if result['port_status']:
                         status = f"{Fore.GREEN}Open"
                     elif result['port_status'] is False:
                         status = f"{Fore.RED}Closed"
+                        continue
+                    
                     else:
                         status = f"{Fore.YELLOW}Filtered/Unknown"
+                        continue
+                        
                     print(f"Port {result['port_number']}/{result['mode']} is {status}")
-                    print(f"Possible service: {result['possible_service']}")
-                    print(f"Host name: {result['host_name']}")
+                    if result['possible_service']:
+                        print(f"Possible service: {result['possible_service']}")
+                        
                     if result['latency'] is not None:
-                        print(f"Latency: {result['latency']} ms")
+                        print(f"Latency: {result['latency']:.3f} ms")
+
+                    print("")
 
             elif args.command in ['send_http_get', 'get']:
                 print(f"{Fore.YELLOW}Sending HTTP GET request to {args.host}:{args.port}...")
-                response = packet_tools.send_http_get(args.user_name, args.host, args.port)
+                response = self.packet_tools.send_http_get(args.user_name, resolved_host, args.port)
                 print(f"{Fore.GREEN}Response:\n{response}")
 
             elif args.command in ['send_http_post', 'post']:
                 print(f"{Fore.YELLOW}Sending HTTP POST request to {args.host}:{args.port}...")
-                response = packet_tools.send_http_post(args.user_name, args.age, args.host, args.port)
+                response = self.packet_tools.send_http_post(args.user_name, args.age, resolved_host, args.port)
                 print(f"{Fore.GREEN}Response:\n{response}")
 
             elif args.command in ['send_http_delete', 'delete']:
                 print(f"{Fore.YELLOW}Sending HTTP DELETE request to {args.host}:{args.port}...")
-                response = packet_tools.send_http_delete(args.user_name, args.host, args.port)
+                response = self.packet_tools.send_http_delete(args.user_name, resolved_host, args.port)
                 print(f"{Fore.GREEN}Response:\n{response}")
 
             elif args.command in ['ping', 'p']:
                 print(f"{Fore.YELLOW}Pinging {args.host} with {args.count} packets...")
-                packet_tools.ping(args.host, args.count, args.timeout, args.delay, args.size)
+                self.packet_tools.ping(resolved_host, args.count, args.timeout, args.delay, args.size)
 
             elif args.command in ['traceroute', 'tr']:
                 print(f"{Fore.YELLOW}Tracing route to {args.host} with max {args.max_hops} hops...")
-                packet_tools.traceroute(args.host, args.max_hops, args.timeout)
+                self.packet_tools.traceroute(resolved_host, args.max_hops, args.timeout)
 
         except Exception as e:
             print(f"{Fore.RED}An error occurred: {e}")
 
-    if args.interactive:
-        while True:
-            try:
-                user_input = input(f"{Fore.CYAN}PacketTools> {Style.RESET_ALL}")
-                if user_input.lower() in ['exit', 'quit']:
-                    break
-                interactive_args = parser.parse_args(user_input.split())
-                execute_command(interactive_args)
-            except SystemExit:
-                pass  # Ignore argparse exit
-    else:
-        if not args.command:
-            parser.print_help()
-            sys.exit(1)
-        execute_command(args)
+    def run(self):
+        version = "1.0"
+        start_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"{Fore.GREEN}PacketTools CLI Version {version}")
+        print(f"Scan started at {start_time}\n")
 
-    # Completion message
-    end_time = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n{Fore.GREEN}Operation completed at {end_time}")
+        parser = argparse.ArgumentParser(
+            description='PacketTools Command Line Interface',
+            formatter_class=argparse.RawTextHelpFormatter)
+        parser.add_argument('-i', '--interactive', action='store_true', help='Enter interactive mode')
+        subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+        # domain_to_ipv4 command
+        parser_domain = subparsers.add_parser('domain_to_ipv4', aliases=['d2ip'], help='Resolve domain to IPv4 address')
+        parser_domain.add_argument('domain', help='Domain name to resolve')
+        parser_domain.add_argument('--dns-server', default='8.8.8.8', help='DNS server to use')
+        parser_domain.add_argument('--dest-port', type=int, default=53, help='Destination port (default: 53)')
+
+        # is_online command
+        parser_online = subparsers.add_parser('is_online', aliases=['io'], help='Check if host is online')
+        parser_online.add_argument('host', help='Host to check')
+        parser_online.add_argument('--timeout', type=int, default=2, help='Timeout in seconds')
+
+        # scan_port command
+        parser_scan_port = subparsers.add_parser('scan_port', aliases=['sp'], help='Scan a specific port on a host')
+        parser_scan_port.add_argument('host', help='Host to scan')
+        parser_scan_port.add_argument('port', type=int, help='Port number to scan')
+        parser_scan_port.add_argument('--mode', choices=['TCP', 'UDP'], default='TCP', help='Protocol to use')
+        parser_scan_port.add_argument('--timeout', type=int, default=2, help='Timeout in seconds')
+
+        # calc_average_latency command
+        parser_latency = subparsers.add_parser('calc_average_latency', aliases=['cal'], help='Calculate average latency to a port')
+        parser_latency.add_argument('host', help='Host to measure')
+        parser_latency.add_argument('port', type=int, help='Port number')
+        parser_latency.add_argument('-n', type=int, default=100, help='Number of samples')
+        parser_latency.add_argument('--mode', choices=['TCP', 'UDP'], default='TCP', help='Protocol to use')
+
+        # scan_port_range command
+        parser_port_range = subparsers.add_parser('scan_port_range', aliases=['spr'], help='Scan a range of ports')
+        parser_port_range.add_argument('host', help='Host to scan')
+        parser_port_range.add_argument('--start-port', type=int, default=1, help='Start of port range')
+        parser_port_range.add_argument('--end-port', type=int, default=1024, help='End of port range')
+        parser_port_range.add_argument('--mode', choices=['TCP', 'UDP', 'ALL'], default='ALL', help='Protocol to use')
+
+        # send_http_get command
+        parser_http_get = subparsers.add_parser('send_http_get', aliases=['get'], help='Send HTTP GET request')
+        parser_http_get.add_argument('user_name', help='User name')
+        parser_http_get.add_argument('host', help='Host to send request to')
+        parser_http_get.add_argument('--port', type=int, default=80, help='Port number (default: 80)')
+
+        # send_http_post command
+        parser_http_post = subparsers.add_parser('send_http_post', aliases=['post'], help='Send HTTP POST request')
+        parser_http_post.add_argument('user_name', help='User name')
+        parser_http_post.add_argument('age', help='Age')
+        parser_http_post.add_argument('host', help='Host to send request to')
+        parser_http_post.add_argument('--port', type=int, default=80, help='Port number (default: 80)')
+
+        # send_http_delete command
+        parser_http_delete = subparsers.add_parser('send_http_delete', aliases=['delete'], help='Send HTTP DELETE request')
+        parser_http_delete.add_argument('user_name', help='User name')
+        parser_http_delete.add_argument('host', help='Host to send request to')
+        parser_http_delete.add_argument('--port', type=int, default=80, help='Port number (default: 80)')
+
+        # ping command
+        parser_ping = subparsers.add_parser('ping', aliases=['p'], help='Ping a host')
+        parser_ping.add_argument('host', help='Host to ping')
+        parser_ping.add_argument('-c', '--count', type=int, default=10, help='Number of packets to send')
+        parser_ping.add_argument('--timeout', type=int, default=1, help='Timeout in seconds')
+        parser_ping.add_argument('--delay', type=int, default=1, help='Delay between packets')
+        parser_ping.add_argument('--size', type=int, default=32, help='Payload size in bytes')
+
+        # traceroute command
+        parser_traceroute = subparsers.add_parser('traceroute', aliases=['tr'], help='Perform traceroute to a host')
+        parser_traceroute.add_argument('host', help='Host to traceroute')
+        parser_traceroute.add_argument('--max-hops', type=int, default=30, help='Maximum number of hops')
+        parser_traceroute.add_argument('--timeout', type=int, default=1, help='Timeout in seconds')
+
+        # Parse arguments
+        args = parser.parse_args()
+        
+        if args.interactive:
+            while True:
+                try:
+                    user_input = input(f"{Fore.CYAN}PacketTools> {Style.RESET_ALL}")
+                    if user_input.lower() in ['exit', 'quit']:
+                        break
+                    
+                    interactive_args = parser.parse_args(user_input.split())
+                    self.execute_command(interactive_args)
+                    
+                except SystemExit:
+                    pass  # Ignore argparse exit
+        else:
+            if not args.command:
+                parser.print_help()
+                sys.exit(1)
+                
+            self.execute_command(args)
+
+
+        end_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"\n{Fore.GREEN}Operation completed at {end_time}")
+
 
 if __name__ == '__main__':
-    cli()
+        source_ipv4_address = "172.18.121.202"
+        interface = "eth0"
+        source_MAC = "00:15:5d:69:b4:e5"
+        dest_MAC = "00:15:5d:ac:5f:57"
+        
+        cli = CLI(source_ipv4_address, interface, source_MAC, dest_MAC)
+        cli.run()
 
     
     
