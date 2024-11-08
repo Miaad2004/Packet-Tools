@@ -92,8 +92,9 @@ class DNS:
         # Debug logging
         print(f"Parsing DNS packet of length: {len(packet)}")
         print(f"Transaction ID: {transaction_id}")
-        print(f"Flags: {bin(flags)}") 
+        #print(f"Flags: {bin(flags)}") 
         print(f"Answers: {n_answers}")
+        print("")
         
         offset = 12
         
