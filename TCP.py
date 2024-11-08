@@ -4,7 +4,6 @@ import struct
 import socket
 import random
 from utils import Utils
-import collections
 from enum import Enum
 import time
 import threading
@@ -569,7 +568,10 @@ class TCPConnection:
             self.send_sock.close()
             self.recv_socket.close()    
         return False, delay
-    
+
+
+# =======================================================================
+# Tests
 def test():   
     def termination_handler(sig, frame):
         tcp_connection.on_terminate_signal()
@@ -600,42 +602,9 @@ def test():
     print(response.decode())
     print('=' * 50)
     
-    #tcp_connection.close()
+    tcp_connection.close()
     time.sleep(5)
     tcp_connection.abort()
-
-def test2():   
-    def termination_handler(sig, frame):
-        tcp_connection.on_terminate_signal()
-        # exit
-        exit(0)
-    
-    signal.signal(signal.SIGINT, termination_handler)
-             
-    interface = 'eth0'
-    source_MAC = "00:15:5d:69:b4:e5"
-    dest_MAC = "00:15:5d:ac:5f:57"
-    source_ip = "172.18.121.202"
-    dest_ip = "192.168.1.5"  # Localhost
-    source_port = random.randint(1024, 65535)
-    dest_port = 8080  # Your server's port
-    
-    tcp_connection = TCPConnection(source_MAC, dest_MAC, source_ip, dest_ip, source_port, dest_port, interface)
-    tcp_connection.open()
-    while not tcp_connection.status() == ConnectionState.ESTABLISHED:
-        time.sleep(0.3)
-    print("sending get")
-    http_get_request = b"GET /user1 HTTP/1.1\r\nHost: 192.168.1.5\r\n\r\n"  # Adjust the endpoint as needed
-    tcp_connection.send(http_get_request)
-    print('=' * 50)
-
-    response = tcp_connection.receive()
-    print(response.decode())
-    print('=' * 50)
-    
-    time.sleep(5)
-    #tcp_connection.close()
-    #tcp_connection.abort()
 
 if __name__ == "__main__":
     test()
