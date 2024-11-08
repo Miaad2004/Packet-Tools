@@ -1,7 +1,6 @@
 import socket
 import threading
 
-# Sample user data
 users = {
     'user1': {'name': 'Alice', 'age': 30},
     'user2': {'name': 'Bob', 'age': 25},
