@@ -92,7 +92,7 @@ class DNS:
         # Debug logging
         print(f"Parsing DNS packet of length: {len(packet)}")
         print(f"Transaction ID: {transaction_id}")
-        print(f"Flags: {bin(flags)}")  # Show binary for better debugging
+        print(f"Flags: {bin(flags)}") 
         print(f"Answers: {n_answers}")
         
         offset = 12
@@ -137,7 +137,6 @@ class DNS:
             offset += rdlength
         return None
     
-    # Adjust the slicing in domain_to_ipv4
     @staticmethod
     def domain_to_ipv4(domain: str, source_ip: str, source_mac: str, dest_mac: str, dns_server: str = "8.8.8.8", source_port: int = 12345, dest_port: int = 53):
         dns_client = DNS()
@@ -150,7 +149,6 @@ class DNS:
     
         ip_header = IPv4.IPHeader(source_ip, dest_ip, IPv4.IPProtocol.UDP)
         ip_packet = IPv4.IPPacket(ip_header, udp_packet).build_packet()
-        #ip_header = ip_packet.build_header(payload_length_bytes=len(udp_packet))
     
         ip_payload = ip_packet
     
@@ -179,40 +177,3 @@ if __name__ == "__main__":
     dest_MAC = "00:15:5d:ac:5f:57"
     source_ip = "172.18.121.202"
     print(DNS.domain_to_ipv4("google.com", source_ip, source_MAC, dest_MAC))
-    # def test(query, source_ip, dest_ip, source_port=12345, dest_port=53, query_type=QueryType.A):
-    #     dns_client = DNS()
-    #     dns_query = dns_client.build_packet(query, query_type)
-        
-    #     udp_packet = UDP.UDPPacket(source_ip, dest_ip, source_port, dest_port)
-    #     udp_payload = dns_query
-    #     udp_header = udp_packet.build_packet(udp_payload)
-        
-    #     ip_packet = IP.IPHeader(source_ip, dest_ip, IP.IPProtocol.UDP)
-    #     ip_header = ip_packet.build_header(payload_length_bytes=len(udp_header))
-        
-    #     packet = ip_header + udp_header
-        
-    #     with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP) as s:
-    #         s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
-    #         s.sendto(packet, (dest_ip, 0))
-        
-    #         print(f"Sent DNS query for {query} ({query_type.name}) to {dest_ip}")
-
-    #         # Step 5: Receive the response
-    #         try:
-    #             response = s.recv(65535)  # Large buffer size to capture full response
-    #             print("Received response from DNS server.")
-    #             print("Response (hex):", response.hex())  # Print raw response in hex
-    #         except socket.timeout:
-    #             print("Request timed out.")
-
-
-
-    # # Test for an IPv6 address record (AAAA)
-    # test("google.com", "172.18.121.202", "8.8.8.8", query_type=QueryType.AAAA)
-
-    # # Test for a Mail Exchange (MX) record
-    # test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.MX)
-
-    # # Test for a Canonical Name (CNAME) record
-    # test("google.com", "192.168.1.3", "8.8.8.8", query_type=QueryType.CNAME)
