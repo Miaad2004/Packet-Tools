@@ -1,4 +1,3 @@
-import socket
 import struct
 import random
 from enum import Enum
@@ -17,7 +16,7 @@ class IPProtocol(Enum):
 
 # Based on https://en.wikipedia.org/wiki/IPv4#DSCP
 class IPHeader:
-    def __init__(self, source_ip: str, dest_ip: str, protocol: IPProtocol, ttl=128):
+    def __init__(self, source_ip: str, dest_ip: str, protocol, ttl=128):
         self.version = 4   # 4 bits
         self.internet_header_length = 20   # 4 bits, min is 20(no options)
         self.DSCP = 0   # 6 bits
@@ -31,8 +30,13 @@ class IPHeader:
         self.fragment_offset = 0    # 13 bits
         
         self.ttl = ttl      # 8 bits
-        self.protocol = protocol.value    # 8 bits
         self.header_checksum = 0 # 16 bits
+        
+        if isinstance(protocol, IPProtocol):
+            self.protocol = protocol.value    # 8 bits
+        
+        else:
+            self.protocol = protocol
         
         self.source_ip = source_ip   # 32 bits
         self.destination_ip = dest_ip   # 32 bits
@@ -88,7 +92,7 @@ class IPHeader:
         source_ip = Utils.bytes_to_ip(source_ip)
         dest_ip = Utils.bytes_to_ip(dest_ip)
         
-        ip_header = IPHeader(source_ip, dest_ip, IPProtocol(protocol))
+        ip_header = IPHeader(source_ip, dest_ip, protocol)
         ip_header.version = version
         ip_header.internet_header_length = ihl
         ip_header.DSCP = dscp
