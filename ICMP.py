@@ -9,7 +9,6 @@ import atexit
 from utils import Utils
 from IPv4 import IPHeader, IPPacket
 import IPv4
-import Ethernet
 
 class ICMPType(Enum):
     ECHO_REPLY = 0  # Echo reply (used to ping)
@@ -91,14 +90,11 @@ class ICMP:
                 packet, addr = my_socket.recvfrom(ICMP.incoming_buffer_size)
                 recv_time = time.perf_counter()
 
-                # Extract IP header and ICMP header
                 ip_header = packet[0:20]
                 icmp_header = packet[20:28]
 
-                # Unpack ICMP header
                 icmp_type, code, checksum, packet_id, sequence = struct.unpack("!bbHHh", icmp_header)
 
-                # Return the relevant details
                 return {
                     "icmp_type": ICMPType(value=icmp_type),
                     "recv_time": recv_time,
@@ -111,7 +107,7 @@ class ICMP:
 
         except socket.timeout as e:
             if verbose:
-                print(f"Request timed out after {timeout} seconds")
+                print(f"ICMP: Request timed out after {timeout} seconds")
             
             raise e
     
@@ -172,8 +168,6 @@ class ICMP:
                     send_time = Utils.get_current_time()
                     ICMP.send_packet(source_ipv4, destination_ipv4, ICMPType.ECHO_REQUEST, my_socket=s, sequence_num=sequence_number, ttl=ttl, send_time=True)
                     
-
-                    
                     sequence_number +=1
                     try:
                         reply = ICMP.listen_for_reply(my_socket=s, timeout=timeout, verbose=False)
@@ -196,7 +190,8 @@ class ICMP:
                         delays.append("*")
                 
                 # Print delays for this hop
-                print(f"{ttl}\t{reply['destination_ip'] if reply else '*'}\t" + "\t".join(delays))
+                ip_address = reply['destination_ip'] if reply else '*'
+                print(f"{ttl:<3} {ip_address:<18} " + " ".join(f"{d:^10}" for d in delays))
                 
                 # Stop if the destination reached
                 if reply and reply["icmp_type"] == ICMPType.ECHO_REPLY:
