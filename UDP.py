@@ -72,7 +72,7 @@ class UDPPacket:
         source_port, dest_port, total_length, checksum = struct.unpack("!HHHH", udp_packet_bytes[:8])
         payload = udp_packet_bytes[8:]
         
-        udp_packet = UDPPacket(source_port=source_port, dest_port=dest_port)
+        udp_packet = UDPPacket(source_ip="", dest_ip="", source_port=source_port, dest_port=dest_port)
         udp_packet.total_length = total_length
         udp_packet.checksum = checksum
         
