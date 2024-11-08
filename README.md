@@ -2,6 +2,8 @@
 
 PacketTools is a Python-based network utility tool, featuring a scratch implementation of TCP, UDP, ICMP, DNS, and IPv4 protocols. It allows users to perform port scanning, latency measurement, DNS resolution, HTTP requests, ping, and traceroute.
 
+![Interface](https://github.com/Miaad2004/Packet-Tools/blob/main/screenshots/test_run.gif)
+
 ## Features
 
 - **Port Scanning**: Scan specific ports or a range of ports using TCP or UDP.
